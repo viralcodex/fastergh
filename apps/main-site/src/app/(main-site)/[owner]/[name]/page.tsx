@@ -24,7 +24,29 @@ import {
 } from "@packages/ui/components/tabs";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { Option } from "effect";
-import { use } from "react";
+import { use, useMemo } from "react";
+
+function getActivityLink(
+	owner: string,
+	name: string,
+	activityType: string,
+	entityNumber: number | null,
+): string | null {
+	if (entityNumber === null) return null;
+	if (activityType.startsWith("pr.") || activityType.startsWith("pr_review.")) {
+		return `/${owner}/${name}/pulls/${entityNumber}`;
+	}
+	if (activityType.startsWith("issue.")) {
+		return `/${owner}/${name}/issues/${entityNumber}`;
+	}
+	// issue_comment could be on either — check the type prefix
+	if (activityType.startsWith("issue_comment.")) {
+		// The activityType includes whether it's a PR or issue based on the isPr flag
+		// Since we can't know here, default to issues (PRs are also accessible via issues in GitHub)
+		return `/${owner}/${name}/issues/${entityNumber}`;
+	}
+	return null;
+}
 
 function formatRelative(timestamp: number): string {
 	const diff = Math.floor((Date.now() - timestamp) / 1000);
@@ -78,10 +100,10 @@ export default function RepoDetailPage(props: {
 
 function RepoHeader({ owner, name }: { owner: string; name: string }) {
 	const client = useProjectionQueries();
-	const overviewAtom = client.getRepoOverview.subscription({
-		ownerLogin: owner,
-		name,
-	});
+	const overviewAtom = useMemo(
+		() => client.getRepoOverview.subscription({ ownerLogin: owner, name }),
+		[client, owner, name],
+	);
 	const overviewResult = useAtomValue(overviewAtom);
 
 	if (Result.isInitial(overviewResult)) {
@@ -140,10 +162,10 @@ function RepoHeader({ owner, name }: { owner: string; name: string }) {
 
 function PullRequestList({ owner, name }: { owner: string; name: string }) {
 	const client = useProjectionQueries();
-	const prsAtom = client.listPullRequests.subscription({
-		ownerLogin: owner,
-		name,
-	});
+	const prsAtom = useMemo(
+		() => client.listPullRequests.subscription({ ownerLogin: owner, name }),
+		[client, owner, name],
+	);
 	const prsResult = useAtomValue(prsAtom);
 
 	if (Result.isInitial(prsResult)) {
@@ -167,7 +189,11 @@ function PullRequestList({ owner, name }: { owner: string; name: string }) {
 	return (
 		<div className="mt-4 divide-y rounded-lg border">
 			{prs.map((pr) => (
-				<div key={pr.number} className="flex items-start gap-3 px-4 py-3">
+				<Link
+					key={pr.number}
+					href={`/${owner}/${name}/pulls/${pr.number}`}
+					className="flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
+				>
 					<div className="mt-0.5">
 						<PrStateIcon state={pr.state} draft={pr.draft} />
 					</div>
@@ -212,7 +238,7 @@ function PullRequestList({ owner, name }: { owner: string; name: string }) {
 							)}
 						</div>
 					</div>
-				</div>
+				</Link>
 			))}
 		</div>
 	);
@@ -220,10 +246,10 @@ function PullRequestList({ owner, name }: { owner: string; name: string }) {
 
 function IssueList({ owner, name }: { owner: string; name: string }) {
 	const client = useProjectionQueries();
-	const issuesAtom = client.listIssues.subscription({
-		ownerLogin: owner,
-		name,
-	});
+	const issuesAtom = useMemo(
+		() => client.listIssues.subscription({ ownerLogin: owner, name }),
+		[client, owner, name],
+	);
 	const issuesResult = useAtomValue(issuesAtom);
 
 	if (Result.isInitial(issuesResult)) {
@@ -247,7 +273,11 @@ function IssueList({ owner, name }: { owner: string; name: string }) {
 	return (
 		<div className="mt-4 divide-y rounded-lg border">
 			{issues.map((issue) => (
-				<div key={issue.number} className="flex items-start gap-3 px-4 py-3">
+				<Link
+					key={issue.number}
+					href={`/${owner}/${name}/issues/${issue.number}`}
+					className="flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
+				>
 					<div className="mt-0.5">
 						<IssueStateIcon state={issue.state} />
 					</div>
@@ -282,7 +312,7 @@ function IssueList({ owner, name }: { owner: string; name: string }) {
 							)}
 						</div>
 					</div>
-				</div>
+				</Link>
 			))}
 		</div>
 	);
@@ -290,10 +320,10 @@ function IssueList({ owner, name }: { owner: string; name: string }) {
 
 function ActivityFeed({ owner, name }: { owner: string; name: string }) {
 	const client = useProjectionQueries();
-	const activityAtom = client.listActivity.subscription({
-		ownerLogin: owner,
-		name,
-	});
+	const activityAtom = useMemo(
+		() => client.listActivity.subscription({ ownerLogin: owner, name }),
+		[client, owner, name],
+	);
 	const activityResult = useAtomValue(activityAtom);
 
 	if (Result.isInitial(activityResult)) {
@@ -316,42 +346,68 @@ function ActivityFeed({ owner, name }: { owner: string; name: string }) {
 
 	return (
 		<div className="mt-4 divide-y rounded-lg border">
-			{activities.map((activity, i) => (
-				<div
-					key={`${activity.createdAt}-${i}`}
-					className="flex items-start gap-3 px-4 py-3"
-				>
-					{activity.actorLogin && (
-						<Avatar className="mt-0.5 size-6">
-							<AvatarImage src={activity.actorAvatarUrl ?? undefined} />
-							<AvatarFallback className="text-[8px]">
-								{activity.actorLogin[0]?.toUpperCase()}
-							</AvatarFallback>
-						</Avatar>
-					)}
-					<div className="min-w-0 flex-1">
-						<div className="flex items-center gap-2 text-sm">
-							<Badge variant="outline" className="text-xs">
-								{activity.activityType}
-							</Badge>
-							<span className="font-medium">{activity.title}</span>
-							{activity.entityNumber && (
-								<span className="text-muted-foreground">
-									#{activity.entityNumber}
-								</span>
-							)}
-						</div>
-						{activity.description && (
-							<p className="mt-0.5 text-sm text-muted-foreground truncate">
-								{activity.description}
-							</p>
+			{activities.map((activity, i) => {
+				const linkHref = getActivityLink(
+					owner,
+					name,
+					activity.activityType,
+					activity.entityNumber,
+				);
+				const content = (
+					<>
+						{activity.actorLogin && (
+							<Avatar className="mt-0.5 size-6">
+								<AvatarImage src={activity.actorAvatarUrl ?? undefined} />
+								<AvatarFallback className="text-[8px]">
+									{activity.actorLogin[0]?.toUpperCase()}
+								</AvatarFallback>
+							</Avatar>
 						)}
-						<span className="text-xs text-muted-foreground">
-							{formatRelative(activity.createdAt)}
-						</span>
+						<div className="min-w-0 flex-1">
+							<div className="flex items-center gap-2 text-sm">
+								<Badge variant="outline" className="text-xs">
+									{activity.activityType}
+								</Badge>
+								<span className="font-medium">{activity.title}</span>
+								{activity.entityNumber && (
+									<span className="text-muted-foreground">
+										#{activity.entityNumber}
+									</span>
+								)}
+							</div>
+							{activity.description && (
+								<p className="mt-0.5 text-sm text-muted-foreground truncate">
+									{activity.description}
+								</p>
+							)}
+							<span className="text-xs text-muted-foreground">
+								{formatRelative(activity.createdAt)}
+							</span>
+						</div>
+					</>
+				);
+
+				if (linkHref) {
+					return (
+						<Link
+							key={`${activity.createdAt}-${i}`}
+							href={linkHref}
+							className="flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
+						>
+							{content}
+						</Link>
+					);
+				}
+
+				return (
+					<div
+						key={`${activity.createdAt}-${i}`}
+						className="flex items-start gap-3 px-4 py-3"
+					>
+						{content}
 					</div>
-				</div>
-			))}
+				);
+			})}
 		</div>
 	);
 }
