@@ -720,3 +720,35 @@ Next Step:
 Blockers/Risks:
   - LSP shows phantom errors on deleted files (guestbook.ts, benchmark.ts, betterAuth.ts) — bun typecheck is source of truth
 ```
+
+### Session 6 — 2026-02-18: Slices 4-6 complete (commits fe56c87, 96fa9cb, c315912)
+
+```
+Completed:
+  - Slice 4 COMMITTED: http.ts wires processWebhookEvent inline after ingestion (fe56c87)
+  - Slice 5 COMPLETE + E2E VALIDATED (96fa9cb):
+    - check_run webhook handler in webhookProcessor.ts
+    - Commit extraction from push event payloads → github_commits table
+    - upsertCommits + upsertCheckRuns internal mutations in bootstrapWrite.ts
+    - Bootstrap now fetches: recent commits (100) + check runs for open PR head SHAs
+    - Bootstrap return type extended with commits/checkRuns counts
+    - Admin tableCounts extended: commits, checkRuns, issueComments, pullRequestReviews
+    - Effect Match used for webhook event dispatch (replaces switch statement)
+    - E2E: push webhook → commits 0→2 ✅, check_run webhook → checkRuns 0→1 ✅
+  - Slice 6 COMPLETE + E2E VALIDATED (c315912):
+    - shared/projections.ts: updateRepoOverview, updatePullRequestList, updateIssueList, appendActivityFeedEntry, updateAllProjections
+    - Projections auto-rebuild after each webhook event is processed (wired in webhookProcessor.ts)
+    - projectionQueries.ts: 5 public query endpoints (listRepos, getRepoOverview, listPullRequests, listIssues, listActivity)
+    - E2E: created issue #10 → projections rebuilt → listRepos returns overview with 7 open issues, 1 open PR ✅
+    - PR list shows author avatars, comment/review counts, head/base refs ✅
+    - Issue list shows labels, sorted by updatedAt desc ✅
+In Progress:
+  - Nothing — Slices 4-6 all committed and deployed
+Next Step:
+  - Slice 7: UI pages wired to projections
+  - Slice 8: Replay/reconcile/dead-letter operations
+Blockers/Risks:
+  - Activity feed is defined but not populated yet (append-only, needs to be wired per event type)
+  - Projection rebuild on every webhook may be expensive for high-throughput repos — consider debouncing in future
+  - LSP phantom errors persist (stale cache from deleted guestbook/benchmark/betterAuth files)
+```
