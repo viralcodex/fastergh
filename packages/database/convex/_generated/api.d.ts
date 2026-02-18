@@ -12,6 +12,7 @@ import type * as confect from "../confect.js";
 import type * as http from "../http.js";
 import type * as rpc_admin from "../rpc/admin.js";
 import type * as rpc_bootstrapWrite from "../rpc/bootstrapWrite.js";
+import type * as rpc_projectionQueries from "../rpc/projectionQueries.js";
 import type * as rpc_repoBootstrap from "../rpc/repoBootstrap.js";
 import type * as rpc_repoBootstrapImpl from "../rpc/repoBootstrapImpl.js";
 import type * as rpc_repoConnect from "../rpc/repoConnect.js";
@@ -19,6 +20,7 @@ import type * as rpc_telemetry from "../rpc/telemetry.js";
 import type * as rpc_webhookIngestion from "../rpc/webhookIngestion.js";
 import type * as rpc_webhookProcessor from "../rpc/webhookProcessor.js";
 import type * as shared_githubApi from "../shared/githubApi.js";
+import type * as shared_projections from "../shared/projections.js";
 import type * as shared_rateLimiter from "../shared/rateLimiter.js";
 import type * as shared_webhookVerify from "../shared/webhookVerify.js";
 
@@ -33,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "rpc/admin": typeof rpc_admin;
   "rpc/bootstrapWrite": typeof rpc_bootstrapWrite;
+  "rpc/projectionQueries": typeof rpc_projectionQueries;
   "rpc/repoBootstrap": typeof rpc_repoBootstrap;
   "rpc/repoBootstrapImpl": typeof rpc_repoBootstrapImpl;
   "rpc/repoConnect": typeof rpc_repoConnect;
@@ -40,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   "rpc/webhookIngestion": typeof rpc_webhookIngestion;
   "rpc/webhookProcessor": typeof rpc_webhookProcessor;
   "shared/githubApi": typeof shared_githubApi;
+  "shared/projections": typeof shared_projections;
   "shared/rateLimiter": typeof shared_rateLimiter;
   "shared/webhookVerify": typeof shared_webhookVerify;
 }>;

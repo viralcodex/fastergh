@@ -1,6 +1,7 @@
 import { createRpcFactory, makeRpcModule } from "@packages/confect/rpc";
 import { Effect, Match, Option, Schema } from "effect";
 import { ConfectMutationCtx, confectSchema } from "../confect";
+import { updateAllProjections } from "../shared/projections";
 import { DatabaseRpcTelemetryLayer } from "./telemetry";
 
 const factory = createRpcFactory({ schema: confectSchema });
@@ -694,6 +695,9 @@ processWebhookEventDef.implement((args) =>
 			yield* ctx.db.patch(event._id, {
 				processState: "processed",
 			});
+
+			// Update projections after successful processing
+			yield* updateAllProjections(repositoryId).pipe(Effect.ignoreLogged);
 		}
 
 		return {
@@ -750,6 +754,8 @@ processAllPendingDef.implement(() =>
 				yield* ctx.db.patch(event._id, {
 					processState: "processed",
 				});
+				// Update projections after successful processing
+				yield* updateAllProjections(repositoryId).pipe(Effect.ignoreLogged);
 				processed++;
 			} else {
 				failed++;
