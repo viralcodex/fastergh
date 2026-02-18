@@ -15,15 +15,52 @@ Convex is the low-latency read model.
 - You may freely add/rename/remove modules as needed.
 - You may upgrade/change Convex packages and Convex React usage whenever necessary.
 
+## Resolved Decisions (Feb 2026)
+
+These decisions were made before autonomous execution began. Do not re-ask.
+
+1. **GitHub App → Not needed initially.** Use **repository-level webhooks** with the existing GitHub OAuth token / PAT. Repos are added manually via an admin mutation or CLI, which creates a repo-level webhook via `gh api`. The `installationId` field is kept in schema for forward-compatibility with a future GitHub App migration, but populated with `0` in repo-webhook mode.
+2. **Git → Local repo only.** No remote push unless explicitly requested. Commit locally with clear messages.
+3. **Starter code → Nuke domain, preserve patterns.** Delete guestbook/posts/users domain code. Keep confect setup patterns, UI component library (`@packages/ui`), observability infra as scaffolding. Ignore `apps/discord-bot` (out of scope).
+4. **Auth → Public, no login required.** Strip Better Auth from active schema and HTTP routes. The `@packages/ui` components and auth packages can stay installed for future use, but nothing in the active codepath should require authentication.
+5. **Confect → All tables.** Use Confect `defineTable` with Effect Schema for every table, including ingestion plumbing (webhook_events_raw, sync_jobs, dead_letters). Consistent patterns everywhere.
+6. **Testing → `@packages/convex-test` is primary.** Use fixture payloads, reproducible webhook harnesses, and Convex-test integration tests. No external dependencies required for CI-critical tests.
+
 ## Product Objective
 
 Build a GitHub mirror system where:
 
-1. GitHub webhooks stream incremental updates into Convex.
-2. Backfill jobs pull historical data from GitHub into Convex.
+1. GitHub repo-level webhooks stream incremental updates into Convex.
+2. Backfill jobs pull historical data from GitHub REST/GraphQL API into Convex.
 3. Reconciliation jobs repair missed or out-of-order changes.
-4. One-time repository bootstrap sync runs automatically when new repositories are added.
+4. One-time repository bootstrap sync runs automatically when new repositories are connected.
 5. The UI reads from Convex projections only for fast, stable page loads.
+6. Repos are connected manually (admin mutation / CLI command) — no GitHub App installation flow needed initially.
+
+## Prerequisites
+
+Before the sync pipeline works end-to-end, these must be in place:
+
+- `CONVEX_DEPLOYMENT` set in `.env` (already done)
+- `NEXT_PUBLIC_CONVEX_URL` and `CONVEX_SITE_URL` set (already done)
+- A GitHub PAT or OAuth token available via `gh auth status` (already done)
+- `GITHUB_WEBHOOK_SECRET` set in `.env` (to be generated during Slice 0)
+- A **public test repo** on `RhysSullivan`'s GitHub account for end-to-end testing (created during Slice 0)
+
+Not needed initially:
+- GitHub App ID / private key (future migration)
+- Better Auth secrets (stripped from active use)
+
+## Test Repository
+
+Create a public repo `RhysSullivan/quickhub-test` via `gh repo create` during Slice 0. This repo is used for:
+
+- End-to-end webhook delivery testing (real webhooks from GitHub → Convex HTTP endpoint)
+- Backfill / bootstrap testing against real GitHub API data
+- Creating test issues, PRs, branches, and commits programmatically via `gh` CLI
+- Validating the full pipeline: webhook → ingestion → normalized tables → projections → UI
+
+The test repo should be treated as disposable — it can be deleted and recreated at any time. All CI-critical tests remain offline-capable via fixture replay, but live smoke tests use this repo.
 
 ## Autonomy Rules
 
@@ -83,6 +120,18 @@ Core pipeline:
 
 `GitHub API + GitHub Webhooks -> Ingestion -> Normalized Convex Tables -> Projection Tables -> Next.js UI`
 
+### What We Sync (and What We Don't)
+
+**In scope:** Repository metadata, branches, commits (metadata only), pull requests, PR reviews, issues, issue comments, check runs. This is a **metadata mirror** — think GitHub dashboard, not GitHub code viewer.
+
+**Explicitly out of scope:**
+- **File/code content** — no tree/blob sync, no diffs, no file browsing
+- **Git object storage** — no cloning repos or storing git packs
+- **Code search** — no indexing of source files
+- **Release assets / packages** — not synced
+- **GitHub Actions workflow definitions** — only check run results are synced, not workflow YAML
+- **Discussions / Projects / Wiki** — not in initial scope
+
 Sync modes:
 
 1. **Bootstrap Backfill**: initial hydration.
@@ -101,17 +150,18 @@ Implement 3 layers in Convex:
 ### A) Control + Ingestion Tables
 
 - `github_installations`
-  - `installationId: number`
+  - `installationId: number` (use `0` for repo-webhook mode; real value when GitHub App is added)
   - `accountId: number`
   - `accountLogin: string`
   - `accountType: "User" | "Organization"`
   - `suspendedAt: number | null`
-  - `permissionsDigest: string`
-  - `eventsDigest: string`
+  - `permissionsDigest: string` (empty string for repo-webhook mode)
+  - `eventsDigest: string` (empty string for repo-webhook mode)
   - `updatedAt: number`
   - indexes:
     - `by_installationId`
     - `by_accountLogin`
+  - **Note:** In repo-webhook mode, create one row per connected GitHub account (user/org). This table exists for forward-compatibility with GitHub App installations. For now, it tracks which accounts have repos connected to this mirror.
 
 - `github_sync_jobs`
   - `jobType: "backfill" | "reconcile" | "replay"`
@@ -345,15 +395,15 @@ Implement 3 layers in Convex:
 
 Implement this behavior explicitly:
 
-1. Trigger repository bootstrap sync when receiving:
-   - `installation_repositories` with `repositories_added`
-   - `repository.created`
-   - `repository.transferred`
-   - app installation initial repository list
+1. Trigger repository bootstrap sync when:
+   - A repo is manually connected via admin mutation / CLI (`connectRepo` mutation)
+   - A webhook event references a repo not yet in the system (auto-discovery)
+   - (Future: `installation_repositories` with `repositories_added` when GitHub App is added)
+   - (Future: `repository.created` / `repository.transferred` via GitHub App)
 2. Enqueue one repository-scoped backfill job per repo using deterministic `lockKey`.
 3. If a queued/running bootstrap already exists for the same repo, do not create duplicates.
 4. Bootstrap pipeline for each repo must fetch at minimum:
-   - repository metadata
+   - repository metadata (via GitHub REST API using PAT / `gh api`)
    - default branch + branch heads
    - recent commits window
    - pull requests
@@ -363,10 +413,13 @@ Implement this behavior explicitly:
 6. After bootstrap complete, repo transitions to normal webhook + reconcile flow.
 7. If bootstrap fails, retry with backoff; after retry exhaustion, move to dead-letter + alert.
 8. Support manual bootstrap retry command for a single repo.
+9. When connecting a repo, also create a repo-level webhook via GitHub API pointing to the Convex HTTP endpoint.
 
 ## GitHub CLI Instructions
 
-Use `gh` and `gh api` for setup and operations.
+Use `gh` and `gh api` for setup and operations. We use **repository-level webhooks** (not a GitHub App), so all webhook operations target `/repos/<owner>/<repo>/hooks`.
+
+The webhook target URL is `${CONVEX_SITE_URL}/api/github/webhook` (the Convex HTTP endpoint).
 
 Core commands:
 
@@ -375,8 +428,8 @@ Core commands:
   - `gh repo view <owner>/<repo>`
 - webhook list:
   - `gh api /repos/<owner>/<repo>/hooks`
-- webhook create (example):
-  - `gh api --method POST /repos/<owner>/<repo>/hooks -f name=web -f active=true -f events[]=push -f events[]=pull_request -f events[]=issues -f events[]=issue_comment -f events[]=check_run -f config.url='<convex-webhook-url>' -f config.content_type=json -f config.secret='<webhook-secret>'`
+- webhook create (for connecting a repo):
+  - `gh api --method POST /repos/<owner>/<repo>/hooks -f name=web -f active=true -f 'events[]=push' -f 'events[]=pull_request' -f 'events[]=issues' -f 'events[]=issue_comment' -f 'events[]=check_run' -f 'events[]=pull_request_review' -f "config[url]=${CONVEX_SITE_URL}/api/github/webhook" -f 'config[content_type]=json' -f "config[secret]=${GITHUB_WEBHOOK_SECRET}"`
 - deliveries:
   - `gh api /repos/<owner>/<repo>/hooks/<hook_id>/deliveries`
 - redeliver:
@@ -386,6 +439,7 @@ Backfill guidance:
 
 - Use GraphQL (`gh api graphql --paginate`) where page traversal is cleaner.
 - Use REST for webhook-aligned entities and simpler payload mapping.
+- Auth: the existing `gh` OAuth token is used for all API calls (no GitHub App installation token needed).
 
 ## Convex CLI Instructions
 
@@ -443,24 +497,33 @@ Testing must include Convex-test-based validation.
 
 Implement in this sequence:
 
-1. Control + ingestion schema.
-2. Webhook endpoint and signature verification.
-3. Repository/user/org backfill.
-4. PR/issue/comment sync.
-5. Commit/branch/check-run sync.
-6. Projection builders.
-7. UI pages wired to projections.
+0. **Slice 0: Cleanup + Foundation**
+   - Delete starter domain code (guestbook, posts, users schema/RPC)
+   - Strip Better Auth from active schema and HTTP routes (keep packages installed)
+   - Remove discord-bot references from active codepaths
+   - Init git repo, make initial commit of clean state
+   - Generate `GITHUB_WEBHOOK_SECRET` and add to `.env` and `.env.example`
+   - Create public test repo `RhysSullivan/quickhub-test` via `gh repo create`
+   - Verify `bun install` and `bun typecheck` pass on clean state
+1. Control + ingestion schema (all tables via Confect `defineTable`).
+2. Webhook HTTP endpoint and HMAC-SHA256 signature verification.
+3. Repository connect flow + bootstrap backfill (repo metadata, branches, recent commits).
+4. PR/issue/comment sync (webhook handlers + backfill).
+5. Commit/branch/check-run sync (webhook handlers + backfill).
+6. Projection builders (view tables updated on domain table writes).
+7. UI pages wired to projections (public, no auth).
 8. Replay/reconcile/dead-letter operations.
 
 ## Definition of Done
 
 Done means:
 
-1. New installation can be fully hydrated from zero.
-2. Webhook updates are reflected in UI quickly.
+1. A newly connected repository can be fully hydrated (bootstrapped) from zero via backfill.
+2. Repo-level webhook updates are reflected in UI within seconds.
 3. Failed/missed events are repairable via replay/reconcile.
-4. UI does not depend on direct GitHub reads for normal views.
-5. Test coverage validates schema, idempotency, and projection correctness.
+4. UI does not depend on direct GitHub API reads for normal views — all reads from Convex projections.
+5. Test coverage (via `@packages/convex-test`) validates schema, idempotency, and projection correctness.
+6. Connecting a new repo is a single admin operation that triggers webhook creation + bootstrap automatically.
 
 ## Execution Discipline
 
@@ -470,9 +533,8 @@ For each vertical slice:
 2. implement,
 3. test,
 4. validate data,
-5. commit,
-6. push/update PR,
-7. append status notes in this file.
+5. commit locally,
+6. append status notes in this file.
 
 Proceed autonomously until the GitHub mirror is reliable, fast, and operable.
 
