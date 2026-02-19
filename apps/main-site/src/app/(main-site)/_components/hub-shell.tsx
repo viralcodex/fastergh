@@ -40,14 +40,14 @@ export function HubShell({
 						maxSize={40}
 						className="border-r border-border/60"
 					>
-						{sidebar}
+						<Suspense fallback={null}>{sidebar}</Suspense>
 					</ResizablePanel>
 
 					<ResizableHandle />
 
 					{/* Panel 2: Detail/Content */}
 					<ResizablePanel defaultSize={75} minSize={40} className="min-w-0">
-						{detail}
+						<Suspense fallback={null}>{detail}</Suspense>
 					</ResizablePanel>
 				</ResizablePanelGroup>
 			</div>

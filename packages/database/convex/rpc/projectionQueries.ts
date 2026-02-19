@@ -12,6 +12,7 @@ import {
 	ConfectQueryCtx,
 	confectSchema,
 } from "../confect";
+import { checkRunsByRepo, issuesByRepo, prsByRepo } from "../shared/aggregates";
 import { GitHubApiClient } from "../shared/githubApi";
 import { DatabaseRpcTelemetryLayer } from "./telemetry";
 
@@ -546,6 +547,7 @@ getRepoOverviewDef.implement((args) =>
 getSyncProgressDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
+		const raw = ctx.rawCtx;
 
 		// Look up the repo to get its githubRepoId
 		const repo = yield* ctx.db
@@ -569,12 +571,22 @@ getSyncProgressDef.implement((args) =>
 
 		if (Option.isNone(job)) return null;
 
+		// Derive itemsFetched from O(log n) aggregate counts — always accurate
+		const [prCount, issueCount, checkRunCount] = yield* Effect.promise(() =>
+			Promise.all([
+				prsByRepo.count(raw, { namespace: repositoryId }),
+				issuesByRepo.count(raw, { namespace: repositoryId }),
+				checkRunsByRepo.count(raw, { namespace: repositoryId }),
+			]),
+		);
+		const itemsFetched = prCount + issueCount + checkRunCount;
+
 		const j = job.value;
 		return {
 			state: j.state,
 			currentStep: j.currentStep ?? null,
 			completedSteps: [...(j.completedSteps ?? [])],
-			itemsFetched: j.itemsFetched ?? 0,
+			itemsFetched,
 			lastError: j.lastError,
 			startedAt: j.createdAt,
 			updatedAt: j.updatedAt,

@@ -19,9 +19,7 @@ export default function MainSiteLayout({
 }) {
 	return (
 		<Providers>
-			<Suspense fallback={null}>
-				<HubShell sidebar={sidebar} detail={detail} />
-			</Suspense>
+			<HubShell sidebar={sidebar} detail={detail} />
 			{/* children slot for route pages that handle redirects etc */}
 			<div className="hidden">
 				<Suspense>{children}</Suspense>
