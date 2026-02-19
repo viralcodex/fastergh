@@ -125,7 +125,7 @@ const insertRepoAndBootstrapDef = factory.internalMutation({
 		visibility: Schema.Literal("public", "private", "internal"),
 		isPrivate: Schema.Boolean,
 		webhookSetup: Schema.Boolean,
-		/** The better-auth user ID of whoever connected this repo (null if no admin perms). */
+		/** The better-auth user ID of whoever connected this repo. */
 		connectedByUserId: Schema.NullOr(Schema.String),
 	},
 	success: Schema.Struct({
@@ -468,7 +468,7 @@ addRepoByUrlDef.implement((args) =>
 				visibility,
 				isPrivate,
 				webhookSetup: webhookCreated,
-				connectedByUserId: hasAdmin ? userId : null,
+				connectedByUserId: userId,
 			},
 		);
 
