@@ -138,8 +138,9 @@ export function Link(
 			rest;
 		if (icon) {
 			return (
-				<a
+				<Link
 					{...anchorProps}
+					prefetch={true}
 					href={rest.href}
 					target="_blank"
 					rel="noopener noreferrer"
@@ -147,19 +148,20 @@ export function Link(
 				>
 					{props.icon}
 					{props.children}
-				</a>
+				</Link>
 			);
 		}
 		return (
-			<a
+			<Link
 				{...anchorProps}
+				prefetch={true}
 				href={rest.href}
 				target="_blank"
 				rel="noopener noreferrer"
 				className={className}
 			>
 				{props.children}
-			</a>
+			</Link>
 		);
 	}
 
