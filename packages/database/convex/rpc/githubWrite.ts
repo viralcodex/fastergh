@@ -79,12 +79,36 @@ class DuplicateOperationError extends Schema.TaggedError<DuplicateOperationError
 	},
 ) {}
 
+class NotAuthenticated extends Schema.TaggedError<NotAuthenticated>()(
+	"NotAuthenticated",
+	{
+		reason: Schema.String,
+	},
+) {}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
+
+/**
+ * Resolve the signed-in user's better-auth ID from the mutation context.
+ * Every write operation must run as the signed-in user, not the repo connector.
+ */
+const getActingUserId = (ctx: {
+	auth: {
+		getUserIdentity: () => Effect.Effect<Option.Option<{ subject: string }>>;
+	};
+}): Effect.Effect<string, NotAuthenticated> =>
+	Effect.gen(function* () {
+		const identity = yield* ctx.auth.getUserIdentity();
+		if (Option.isNone(identity)) {
+			return yield* new NotAuthenticated({ reason: "User is not signed in" });
+		}
+		return identity.value.subject;
+	});
 
 // ---------------------------------------------------------------------------
 // 1. Public mutations — create pending write ops + schedule actions
@@ -105,12 +129,13 @@ const createIssueDef = factory.mutation({
 		labels: Schema.optional(Schema.Array(Schema.String)),
 	},
 	success: Schema.Struct({ correlationId: Schema.String }),
-	error: DuplicateOperationError,
+	error: Schema.Union(DuplicateOperationError, NotAuthenticated),
 });
 
 createIssueDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectMutationCtx;
+		const actingUserId = yield* getActingUserId(ctx);
 		const now = Date.now();
 
 		// Dedup check
@@ -162,7 +187,7 @@ createIssueDef.implement((args) =>
 			ctx.scheduler.runAfter(
 				0,
 				internal.rpc.githubWrite.executeWriteOperation,
-				{ correlationId: args.correlationId },
+				{ correlationId: args.correlationId, actingUserId },
 			),
 		);
 
@@ -183,12 +208,13 @@ const createCommentDef = factory.mutation({
 		body: Schema.String,
 	},
 	success: Schema.Struct({ correlationId: Schema.String }),
-	error: DuplicateOperationError,
+	error: Schema.Union(DuplicateOperationError, NotAuthenticated),
 });
 
 createCommentDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectMutationCtx;
+		const actingUserId = yield* getActingUserId(ctx);
 		const now = Date.now();
 
 		const existing = yield* ctx.db
@@ -237,7 +263,7 @@ createCommentDef.implement((args) =>
 			ctx.scheduler.runAfter(
 				0,
 				internal.rpc.githubWrite.executeWriteOperation,
-				{ correlationId: args.correlationId },
+				{ correlationId: args.correlationId, actingUserId },
 			),
 		);
 
@@ -258,12 +284,13 @@ const updateIssueStateDef = factory.mutation({
 		state: Schema.Literal("open", "closed"),
 	},
 	success: Schema.Struct({ correlationId: Schema.String }),
-	error: DuplicateOperationError,
+	error: Schema.Union(DuplicateOperationError, NotAuthenticated),
 });
 
 updateIssueStateDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectMutationCtx;
+		const actingUserId = yield* getActingUserId(ctx);
 		const now = Date.now();
 
 		const existing = yield* ctx.db
@@ -312,7 +339,7 @@ updateIssueStateDef.implement((args) =>
 			ctx.scheduler.runAfter(
 				0,
 				internal.rpc.githubWrite.executeWriteOperation,
-				{ correlationId: args.correlationId },
+				{ correlationId: args.correlationId, actingUserId },
 			),
 		);
 
@@ -335,12 +362,13 @@ const mergePullRequestDef = factory.mutation({
 		commitMessage: Schema.optional(Schema.String),
 	},
 	success: Schema.Struct({ correlationId: Schema.String }),
-	error: DuplicateOperationError,
+	error: Schema.Union(DuplicateOperationError, NotAuthenticated),
 });
 
 mergePullRequestDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectMutationCtx;
+		const actingUserId = yield* getActingUserId(ctx);
 		const now = Date.now();
 
 		const existing = yield* ctx.db
@@ -391,7 +419,7 @@ mergePullRequestDef.implement((args) =>
 			ctx.scheduler.runAfter(
 				0,
 				internal.rpc.githubWrite.executeWriteOperation,
-				{ correlationId: args.correlationId },
+				{ correlationId: args.correlationId, actingUserId },
 			),
 		);
 
@@ -408,7 +436,7 @@ mergePullRequestDef.implement((args) =>
  * On success, calls markWriteCompleted. On failure, calls markWriteFailed.
  */
 const executeWriteOperationDef = factory.internalAction({
-	payload: { correlationId: Schema.String },
+	payload: { correlationId: Schema.String, actingUserId: Schema.String },
 	success: Schema.Struct({ completed: Schema.Boolean }),
 });
 
@@ -430,7 +458,6 @@ executeWriteOperationDef.implement((args) =>
 			inputPayloadJson: Schema.optional(Schema.String),
 			ownerLogin: Schema.optional(Schema.String),
 			repoName: Schema.optional(Schema.String),
-			connectedByUserId: Schema.optional(Schema.NullOr(Schema.String)),
 		});
 		const op = Schema.decodeUnknownSync(OpResultSchema)(opResult);
 		if (!op.found) {
@@ -444,14 +471,10 @@ executeWriteOperationDef.implement((args) =>
 		const ownerLogin = op.ownerLogin ?? "";
 		const repoName = op.repoName ?? "";
 
-		// Resolve the GitHub token from the repo's connected user
-		const connectedByUserId = op.connectedByUserId ?? null;
-		if (!connectedByUserId) {
-			return { completed: false };
-		}
+		// Resolve the GitHub token from the signed-in user who triggered the action
 		const token = yield* lookupGitHubTokenByUserIdConfect(
 			ctx.runQuery,
-			connectedByUserId,
+			args.actingUserId,
 		);
 		const gh = yield* Effect.provide(
 			GitHubApiClient,
@@ -969,7 +992,6 @@ const getWriteOperationDef = factory.internalQuery({
 		inputPayloadJson: Schema.optional(Schema.String),
 		ownerLogin: Schema.optional(Schema.String),
 		repoName: Schema.optional(Schema.String),
-		connectedByUserId: Schema.optional(Schema.NullOr(Schema.String)),
 	}),
 });
 
@@ -985,23 +1007,12 @@ getWriteOperationDef.implement((args) =>
 
 		if (Option.isNone(op)) return { found: false };
 
-		// Look up the repo's connectedByUserId
-		const repo = yield* ctx.db
-			.query("github_repositories")
-			.withIndex("by_ownerLogin_and_name", (q) =>
-				q.eq("ownerLogin", op.value.ownerLogin).eq("name", op.value.repoName),
-			)
-			.first();
-
 		return {
 			found: true,
 			operationType: op.value.operationType,
 			inputPayloadJson: op.value.inputPayloadJson,
 			ownerLogin: op.value.ownerLogin,
 			repoName: op.value.repoName,
-			connectedByUserId: Option.isSome(repo)
-				? repo.value.connectedByUserId
-				: null,
 		};
 	}),
 );
@@ -1121,5 +1132,10 @@ export const {
 	getWriteOperation,
 	listWriteOperations,
 } = githubWriteModule.handlers;
-export { githubWriteModule, GitHubWriteError, DuplicateOperationError };
+export {
+	githubWriteModule,
+	GitHubWriteError,
+	DuplicateOperationError,
+	NotAuthenticated,
+};
 export type GithubWriteModule = typeof githubWriteModule;
