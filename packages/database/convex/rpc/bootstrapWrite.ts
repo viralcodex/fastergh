@@ -55,6 +55,10 @@ const upsertPullRequestsDef = factory.internalMutation({
 				githubUpdatedAt: Schema.Number,
 			}),
 		),
+		/** Skip expensive projection updates during bulk bootstrap writes. */
+		skipProjections: Schema.optionalWith(Schema.Boolean, {
+			default: () => false,
+		}),
 	},
 	success: Schema.Struct({ upserted: Schema.Number }),
 });
@@ -81,6 +85,10 @@ const upsertIssuesDef = factory.internalMutation({
 				githubUpdatedAt: Schema.Number,
 			}),
 		),
+		/** Skip expensive projection updates during bulk bootstrap writes. */
+		skipProjections: Schema.optionalWith(Schema.Boolean, {
+			default: () => false,
+		}),
 	},
 	success: Schema.Struct({ upserted: Schema.Number }),
 });
@@ -293,8 +301,11 @@ upsertPullRequestsDef.implement((args) =>
 		}
 
 		// Incrementally update projections so subscriptions push new data to the UI
-		yield* updatePullRequestList(args.repositoryId).pipe(Effect.ignoreLogged);
-		yield* updateRepoOverview(args.repositoryId).pipe(Effect.ignoreLogged);
+		// (skipped during bootstrap — projections are rebuilt once at the end)
+		if (!args.skipProjections) {
+			yield* updatePullRequestList(args.repositoryId).pipe(Effect.ignoreLogged);
+			yield* updateRepoOverview(args.repositoryId).pipe(Effect.ignoreLogged);
+		}
 
 		return { upserted };
 	}),
@@ -342,8 +353,11 @@ upsertIssuesDef.implement((args) =>
 		}
 
 		// Incrementally update projections so subscriptions push new data to the UI
-		yield* updateIssueList(args.repositoryId).pipe(Effect.ignoreLogged);
-		yield* updateRepoOverview(args.repositoryId).pipe(Effect.ignoreLogged);
+		// (skipped during bootstrap — projections are rebuilt once at the end)
+		if (!args.skipProjections) {
+			yield* updateIssueList(args.repositoryId).pipe(Effect.ignoreLogged);
+			yield* updateRepoOverview(args.repositoryId).pipe(Effect.ignoreLogged);
+		}
 
 		return { upserted };
 	}),

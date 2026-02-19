@@ -16,7 +16,7 @@ import { cn } from "@packages/ui/lib/utils";
 import { useGithubWrite } from "@packages/ui/rpc/github-write";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { PatchDiff } from "@pierre/diffs/react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { MarkdownBody } from "@/components/markdown-body";
 
@@ -338,35 +338,43 @@ function InfoSidebar({
 					</h3>
 					<div className="divide-y rounded-md border">
 						{pr.checkRuns.map((check) => (
-							<div
-								key={check.name}
-								className="flex items-center justify-between gap-2 px-2.5 py-1.5"
+							<a
+								key={check.githubCheckRunId}
+								href={`https://github.com/${owner}/${name}/runs/${String(check.githubCheckRunId)}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="flex items-center justify-between gap-2 px-2.5 py-1.5 hover:bg-muted/50 transition-colors group"
 							>
 								<div className="flex items-center gap-2 min-w-0">
 									<CheckIcon
 										status={check.status}
 										conclusion={check.conclusion}
 									/>
-									<span className="text-xs truncate">{check.name}</span>
+									<span className="text-xs truncate group-hover:underline">
+										{check.name}
+									</span>
 								</div>
-								{check.conclusion && (
-									<Badge
-										variant={
-											check.conclusion === "success"
-												? "secondary"
-												: check.conclusion === "failure"
-													? "destructive"
-													: "outline"
-										}
-										className={cn(
-											"shrink-0 text-[10px]",
-											check.conclusion === "success" && "text-green-600",
-										)}
-									>
-										{check.conclusion}
-									</Badge>
-								)}
-							</div>
+								<div className="flex items-center gap-1.5 shrink-0">
+									{check.conclusion && (
+										<Badge
+											variant={
+												check.conclusion === "success"
+													? "secondary"
+													: check.conclusion === "failure"
+														? "destructive"
+														: "outline"
+											}
+											className={cn(
+												"text-[10px]",
+												check.conclusion === "success" && "text-green-600",
+											)}
+										>
+											{check.conclusion}
+										</Badge>
+									)}
+									<ExternalLink className="size-3 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+								</div>
+							</a>
 						))}
 					</div>
 				</div>

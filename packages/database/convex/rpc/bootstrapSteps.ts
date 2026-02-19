@@ -191,83 +191,113 @@ export const fetchPullRequests = internalAction({
 			headSha: string;
 		}>;
 	}> => {
+		// Stream page-by-page to avoid OOM on large repos (e.g. oven-sh/bun
+		// has 14k+ PRs). Each page is transformed, written to the DB, and
+		// discarded before fetching the next page.
 		const { collectUser, getUsers } = createUserCollector();
+		let totalCount = 0;
+		const openPrSyncTargets: Array<{
+			pullRequestNumber: number;
+			headSha: string;
+		}> = [];
 
-		const allPrs = await runWithGitHub(
+		// We use a plain async loop so we can interleave GitHub fetches
+		// (via Effect) with Convex mutation writes (via ctx.runMutation).
+		// Resolve the GitHubApiClient service once, then reuse its .use()
+		// method for each page — avoids re-creating the token layer each time.
+		const gh = await runWithGitHub(
 			Effect.gen(function* () {
-				const gh = yield* GitHubApiClient;
-				return yield* gh.use(async (fetch) => {
-					const prs: Array<Record<string, unknown>> = [];
-					let url: string | null =
-						`/repos/${args.fullName}/pulls?state=all&per_page=100`;
-					while (url) {
-						const res = await fetch(url);
+				return yield* GitHubApiClient;
+			}),
+		);
+
+		let url: string | null =
+			`/repos/${args.fullName}/pulls?state=all&per_page=100`;
+
+		while (url) {
+			// Fetch one page — gh.use() returns Effect<A, Error, never>
+			// so we can run it directly without providing a layer.
+			const { page, nextUrl } = await Effect.runPromise(
+				gh
+					.use(async (fetch) => {
+						const res = await fetch(url!);
 						if (!res.ok)
 							throw new GitHubApiError({
 								status: res.status,
 								message: await res.text(),
 								url: res.url,
 							});
-						const page = (await res.json()) as Array<Record<string, unknown>>;
-						prs.push(...page);
-						url = parseNextLink(res.headers.get("Link"));
-					}
-					return prs;
-				});
-			}).pipe(Effect.orDie),
-		);
+						return {
+							page: (await res.json()) as Array<Record<string, unknown>>,
+							nextUrl: parseNextLink(res.headers.get("Link")),
+						};
+					})
+					.pipe(Effect.orDie),
+			);
 
-		const pullRequests = allPrs.map((pr) => {
-			const authorUserId = collectUser(pr.user);
-			const head =
-				typeof pr.head === "object" && pr.head !== null
-					? (pr.head as Record<string, unknown>)
-					: {};
-			const base =
-				typeof pr.base === "object" && pr.base !== null
-					? (pr.base as Record<string, unknown>)
-					: {};
+			// Transform the page
+			const pullRequests = page.map((pr) => {
+				const authorUserId = collectUser(pr.user);
+				const head =
+					typeof pr.head === "object" && pr.head !== null
+						? (pr.head as Record<string, unknown>)
+						: {};
+				const base =
+					typeof pr.base === "object" && pr.base !== null
+						? (pr.base as Record<string, unknown>)
+						: {};
 
-			return {
-				githubPrId: num(pr.id) ?? 0,
-				number: num(pr.number) ?? 0,
-				state: (pr.state === "open" ? "open" : "closed") as "open" | "closed",
-				draft: pr.draft === true,
-				title: str(pr.title) ?? "",
-				body: str(pr.body),
-				authorUserId,
-				assigneeUserIds: [] as Array<number>,
-				requestedReviewerUserIds: [] as Array<number>,
-				baseRefName: str(base.ref) ?? "",
-				headRefName: str(head.ref) ?? "",
-				headSha: str(head.sha) ?? "",
-				mergeableState: str(pr.mergeable_state),
-				mergedAt: isoToMs(pr.merged_at),
-				closedAt: isoToMs(pr.closed_at),
-				githubUpdatedAt: isoToMs(pr.updated_at) ?? Date.now(),
-			};
-		});
-
-		// Write PRs in batches of 50
-		for (let i = 0; i < pullRequests.length; i += 50) {
-			await ctx.runMutation(internal.rpc.bootstrapWrite.upsertPullRequests, {
-				repositoryId: args.repositoryId,
-				pullRequests: pullRequests.slice(i, i + 50),
+				return {
+					githubPrId: num(pr.id) ?? 0,
+					number: num(pr.number) ?? 0,
+					state: (pr.state === "open" ? "open" : "closed") as "open" | "closed",
+					draft: pr.draft === true,
+					title: str(pr.title) ?? "",
+					body: str(pr.body),
+					authorUserId,
+					assigneeUserIds: [] as Array<number>,
+					requestedReviewerUserIds: [] as Array<number>,
+					baseRefName: str(base.ref) ?? "",
+					headRefName: str(head.ref) ?? "",
+					headSha: str(head.sha) ?? "",
+					mergeableState: str(pr.mergeable_state),
+					mergedAt: isoToMs(pr.merged_at),
+					closedAt: isoToMs(pr.closed_at),
+					githubUpdatedAt: isoToMs(pr.updated_at) ?? Date.now(),
+				};
 			});
+
+			// Write this page's PRs to the DB immediately (batches of 50).
+			// skipProjections=true avoids expensive full-table projection
+			// rebuilds during bulk import — projections are rebuilt once
+			// at the end of the workflow via onBootstrapComplete.
+			for (let i = 0; i < pullRequests.length; i += 50) {
+				await ctx.runMutation(internal.rpc.bootstrapWrite.upsertPullRequests, {
+					repositoryId: args.repositoryId,
+					pullRequests: pullRequests.slice(i, i + 50),
+					skipProjections: true,
+				});
+			}
+
+			// Track open PRs for file sync (only open PRs, small list)
+			for (const pr of pullRequests) {
+				if (pr.state === "open" && pr.headSha !== "") {
+					openPrSyncTargets.push({
+						pullRequestNumber: pr.number,
+						headSha: pr.headSha,
+					});
+				}
+			}
+
+			totalCount += pullRequests.length;
+			url = nextUrl;
 		}
 
-		// Write collected users
+		// Write collected users (accumulated across all pages, but these are
+		// much smaller — one entry per unique user)
 		await writeUsers(ctx, getUsers());
 
-		// Collect open PR info for file sync scheduling
-		const openPrSyncTargets = pullRequests
-			.filter((pr) => pr.state === "open" && pr.headSha !== "")
-			.map((pr) => ({
-				pullRequestNumber: pr.number,
-				headSha: pr.headSha,
-			}));
-
-		return { count: pullRequests.length, openPrSyncTargets };
+		return { count: totalCount, openPrSyncTargets };
 	},
 });
 
@@ -282,78 +312,94 @@ export const fetchIssues = internalAction({
 	},
 	returns: v.object({ count: v.number() }),
 	handler: async (ctx, args): Promise<{ count: number }> => {
+		// Stream page-by-page to avoid OOM on large repos (e.g. oven-sh/bun
+		// has 10k+ issues). Each page is transformed, written, and discarded.
 		const { collectUser, getUsers } = createUserCollector();
+		let totalCount = 0;
 
-		const allIssues = await runWithGitHub(
+		const gh = await runWithGitHub(
 			Effect.gen(function* () {
-				const gh = yield* GitHubApiClient;
-				return yield* gh.use(async (fetch) => {
-					const issues: Array<Record<string, unknown>> = [];
-					let url: string | null =
-						`/repos/${args.fullName}/issues?state=all&per_page=100`;
-					while (url) {
-						const res = await fetch(url);
+				return yield* GitHubApiClient;
+			}),
+		);
+
+		let url: string | null =
+			`/repos/${args.fullName}/issues?state=all&per_page=100`;
+
+		while (url) {
+			// Fetch one page
+			const { page, nextUrl } = await Effect.runPromise(
+				gh
+					.use(async (fetch) => {
+						const res = await fetch(url!);
 						if (!res.ok)
 							throw new GitHubApiError({
 								status: res.status,
 								message: await res.text(),
 								url: res.url,
 							});
-						const page = (await res.json()) as Array<Record<string, unknown>>;
-						// GitHub's issues API includes PRs — filter them out
-						issues.push(...page.filter((item) => !("pull_request" in item)));
-						url = parseNextLink(res.headers.get("Link"));
-					}
-					return issues;
+						return {
+							page: (await res.json()) as Array<Record<string, unknown>>,
+							nextUrl: parseNextLink(res.headers.get("Link")),
+						};
+					})
+					.pipe(Effect.orDie),
+			);
+
+			// GitHub's issues API includes PRs — filter them out, then transform
+			const issues = page
+				.filter((item) => !("pull_request" in item))
+				.map((issue) => {
+					const authorUserId = collectUser(issue.user);
+					const labels = Array.isArray(issue.labels)
+						? issue.labels
+								.map((l: unknown) =>
+									typeof l === "object" &&
+									l !== null &&
+									"name" in l &&
+									typeof l.name === "string"
+										? l.name
+										: null,
+								)
+								.filter((n: string | null): n is string => n !== null)
+						: [];
+
+					return {
+						githubIssueId: num(issue.id) ?? 0,
+						number: num(issue.number) ?? 0,
+						state: (issue.state === "open" ? "open" : "closed") as
+							| "open"
+							| "closed",
+						title: str(issue.title) ?? "",
+						body: str(issue.body),
+						authorUserId,
+						assigneeUserIds: [] as Array<number>,
+						labelNames: labels,
+						commentCount: num(issue.comments) ?? 0,
+						isPullRequest: false,
+						closedAt: isoToMs(issue.closed_at),
+						githubUpdatedAt: isoToMs(issue.updated_at) ?? Date.now(),
+					};
 				});
-			}).pipe(Effect.orDie),
-		);
 
-		const issues = allIssues.map((issue) => {
-			const authorUserId = collectUser(issue.user);
-			const labels = Array.isArray(issue.labels)
-				? issue.labels
-						.map((l: unknown) =>
-							typeof l === "object" &&
-							l !== null &&
-							"name" in l &&
-							typeof l.name === "string"
-								? l.name
-								: null,
-						)
-						.filter((n: string | null): n is string => n !== null)
-				: [];
+			// Write this page's issues to the DB immediately.
+			// skipProjections=true — projections rebuilt at end of workflow.
+			for (let i = 0; i < issues.length; i += 50) {
+				await ctx.runMutation(internal.rpc.bootstrapWrite.upsertIssues, {
+					repositoryId: args.repositoryId,
+					issues: issues.slice(i, i + 50),
+					skipProjections: true,
+				});
+			}
 
-			return {
-				githubIssueId: num(issue.id) ?? 0,
-				number: num(issue.number) ?? 0,
-				state: (issue.state === "open" ? "open" : "closed") as
-					| "open"
-					| "closed",
-				title: str(issue.title) ?? "",
-				body: str(issue.body),
-				authorUserId,
-				assigneeUserIds: [] as Array<number>,
-				labelNames: labels,
-				commentCount: num(issue.comments) ?? 0,
-				isPullRequest: false,
-				closedAt: isoToMs(issue.closed_at),
-				githubUpdatedAt: isoToMs(issue.updated_at) ?? Date.now(),
-			};
-		});
-
-		// Write issues in batches
-		for (let i = 0; i < issues.length; i += 50) {
-			await ctx.runMutation(internal.rpc.bootstrapWrite.upsertIssues, {
-				repositoryId: args.repositoryId,
-				issues: issues.slice(i, i + 50),
-			});
+			totalCount += issues.length;
+			url = nextUrl;
 		}
 
 		// Write collected users
 		await writeUsers(ctx, getUsers());
 
-		return { count: issues.length };
+		return { count: totalCount };
 	},
 });
 
