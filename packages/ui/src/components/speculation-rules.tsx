@@ -30,9 +30,9 @@ export function SpeculationRules() {
 	};
 
 	return (
-		// biome-ignore lint/security/noDangerouslySetInnerHtml: speculation rules require inline JSON in a script tag
 		<script
 			type="speculationrules"
+			// biome-ignore lint/security/noDangerouslySetInnerHtml: speculation rules require inline JSON in a script tag
 			dangerouslySetInnerHTML={{ __html: JSON.stringify(rules) }}
 		/>
 	);
