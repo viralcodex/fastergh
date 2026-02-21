@@ -25,7 +25,7 @@ import type { ActionCtx } from "../_generated/server";
 import { internalAction } from "../_generated/server";
 import { toOpenClosedState } from "../shared/coerce";
 import {
-	type Issue,
+	Issue,
 	PullRequestSimple,
 	type SimpleUser,
 } from "../shared/generated_github_client";

@@ -1,8 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
-import { SidebarClient, SidebarSkeleton } from "../sidebar-client";
-import { SidebarRepoList } from "../sidebar-repo-list";
+import { RepoListSkeleton, SidebarRepoList } from "../sidebar-repo-list";
 
 /**
  * Sidebar for the org overview page (/:owner).
@@ -10,7 +9,7 @@ import { SidebarRepoList } from "../sidebar-repo-list";
  */
 export default function OrgSidebarDefault() {
 	return (
-		<Suspense fallback={<SidebarSkeleton />}>
+		<Suspense fallback={<RepoListSkeleton />}>
 			<Content />
 		</Suspense>
 	);
@@ -19,9 +18,5 @@ export default function OrgSidebarDefault() {
 async function Content() {
 	await connection();
 	const initialRepos = await serverQueries.listRepos.queryPromise({});
-	return (
-		<SidebarClient initialRepos={initialRepos}>
-			<SidebarRepoList initialRepos={initialRepos} />
-		</SidebarClient>
-	);
+	return <SidebarRepoList initialRepos={initialRepos} />;
 }

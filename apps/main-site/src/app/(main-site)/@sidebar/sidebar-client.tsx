@@ -1,19 +1,14 @@
 "use client";
 
-import { useSubscriptionWithInitial } from "@packages/confect/rpc";
 import { Button } from "@packages/ui/components/button";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { UserButton } from "@packages/ui/components/user-button";
 import { GitHubIcon } from "@packages/ui/icons/index";
 import { authClient } from "@packages/ui/lib/auth-client";
-import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { useMemo } from "react";
 import { InstallGitHubAppButton } from "../_components/install-github-app-button";
 import { RepoNavSelector } from "../_components/repo-nav-selector";
-
-const EmptyPayload: Record<string, never> = {};
 
 export type SidebarRepo = {
 	repositoryId: number;
@@ -55,21 +50,10 @@ export function SidebarClient({
 	const activeOwner = segments[0] ?? null;
 	const activeName = segments[1] ?? null;
 
-	const client = useProjectionQueries();
-	const reposAtom = useMemo(
-		() => client.listRepos.subscription(EmptyPayload),
-		[client],
-	);
-	const repos = useSubscriptionWithInitial(reposAtom, initialRepos);
-
-	if (session.isPending) {
-		return <SidebarSkeleton />;
-	}
-
 	return (
 		<div className="flex h-full flex-col bg-sidebar">
 			{/* Top: nav selector */}
-			{repos.length > 0 && (
+			{initialRepos.length > 0 && (
 				<div className="shrink-0 border-b border-sidebar-border">
 					<RepoNavSelector
 						owner={activeOwner}
@@ -105,7 +89,9 @@ export function SidebarClient({
 					className="h-6 text-[10px] w-full"
 					iconClassName="size-2.5"
 				/>
-				{session.data ? (
+				{session.isPending ? (
+					<Skeleton className="h-7 w-full rounded-md" />
+				) : session.data ? (
 					<UserButton />
 				) : (
 					<Button

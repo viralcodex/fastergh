@@ -3,14 +3,13 @@ import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { RepoListShell } from "../../../../_components/repo-list-shell";
 import { WorkflowRunListClient } from "../../../../_components/workflow-run-list-client";
-import { SidebarClient, SidebarSkeleton } from "../../../sidebar-client";
-import { SidebarRepoList } from "../../../sidebar-repo-list";
+import { RepoListSkeleton, SidebarRepoList } from "../../../sidebar-repo-list";
 
 export default function ActionsListDefault(props: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
 	return (
-		<Suspense fallback={<SidebarSkeleton />}>
+		<Suspense fallback={<RepoListSkeleton />}>
 			<Content paramsPromise={props.params} />
 		</Suspense>
 	);
@@ -26,19 +25,13 @@ async function Content({
 	const initialRepos = await serverQueries.listRepos.queryPromise({});
 
 	if (!owner || !name) {
-		return (
-			<SidebarClient initialRepos={initialRepos}>
-				<SidebarRepoList initialRepos={initialRepos} />
-			</SidebarClient>
-		);
+		return <SidebarRepoList initialRepos={initialRepos} />;
 	}
 
 	return (
-		<SidebarClient initialRepos={initialRepos}>
-			<RepoListShell paramsPromise={paramsPromise} activeTab="actions">
-				<WorkflowRunListContent owner={owner} name={name} />
-			</RepoListShell>
-		</SidebarClient>
+		<RepoListShell paramsPromise={paramsPromise} activeTab="actions">
+			<WorkflowRunListContent owner={owner} name={name} />
+		</RepoListShell>
 	);
 }
 

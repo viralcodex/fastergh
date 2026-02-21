@@ -1,6 +1,6 @@
 "use client";
 
-import { useSubscriptionWithInitial } from "@packages/confect/rpc";
+import { Result, useAtomValue } from "@effect-atom/atom-react";
 import {
 	Avatar,
 	AvatarFallback,
@@ -13,9 +13,11 @@ import {
 } from "@packages/ui/components/collapsible";
 import { ChevronRight } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
+import { Skeleton } from "@packages/ui/components/skeleton";
+import { authClient } from "@packages/ui/lib/auth-client";
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
-import { Array as Arr, pipe, Record as Rec } from "effect";
+import { Array as Arr, Option, pipe, Record as Rec } from "effect";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 import type { SidebarRepo } from "./sidebar-client";
@@ -36,12 +38,28 @@ export function SidebarRepoList({
 	const activeOwner = segments[0] ?? null;
 	const activeName = segments[1] ?? null;
 
+	const session = authClient.useSession();
 	const client = useProjectionQueries();
 	const reposAtom = useMemo(
 		() => client.listRepos.subscription(EmptyPayload),
 		[client],
 	);
-	const repos = useSubscriptionWithInitial(reposAtom, initialRepos);
+	const result = useAtomValue(reposAtom);
+
+	// For signed-in users the subscription briefly returns unauthenticated
+	// (global) repos before the auth token propagates. Show a skeleton during
+	// that window so users never see a flash of wrong repos.
+	const isSignedIn = !!session.data;
+	const subscriptionSettled = !Result.isInitial(result);
+
+	const repos = subscriptionSettled
+		? (() => {
+				const valueOption = Result.value(result);
+				return Option.isSome(valueOption)
+					? (valueOption.value as ReadonlyArray<SidebarRepo>)
+					: initialRepos;
+			})()
+		: initialRepos;
 
 	const grouped = useMemo(
 		() =>
@@ -52,6 +70,11 @@ export function SidebarRepoList({
 		[repos],
 	);
 	const entries = useMemo(() => Rec.toEntries(grouped), [grouped]);
+
+	// Show skeleton while the authenticated subscription hasn't settled yet.
+	if (isSignedIn && !subscriptionSettled) {
+		return <RepoListSkeleton />;
+	}
 
 	return (
 		<>
@@ -147,6 +170,63 @@ export function SidebarRepoList({
 							</Collapsible>
 						);
 					})}
+			</div>
+		</>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Skeleton — matches the shape of the grouped repo list
+// ---------------------------------------------------------------------------
+
+export function RepoListSkeleton() {
+	return (
+		<>
+			{/* Header skeleton */}
+			<div className="shrink-0 px-2 pt-2 pb-1.5 border-b border-sidebar-border">
+				<div className="flex items-center justify-between">
+					<Skeleton className="h-3 w-10 rounded-sm" />
+					<Skeleton className="h-3 w-4 rounded-sm" />
+				</div>
+			</div>
+
+			{/* Repo list skeleton — simulate two owner groups */}
+			<div className="py-0.5">
+				{/* Group 1 */}
+				<div className="px-2 py-1 flex items-center gap-1">
+					<Skeleton className="size-2.5 rounded-sm" />
+					<Skeleton className="size-3.5 rounded-full" />
+					<Skeleton className="h-2.5 w-20 rounded-sm" />
+				</div>
+				<div className="ml-3 border-l border-sidebar-border/50 space-y-px">
+					{[1, 2, 3].map((i) => (
+						<div key={i} className="flex items-center gap-1 pl-2 pr-2 py-0.5">
+							<Skeleton className="size-3.5 shrink-0 rounded-full" />
+							<Skeleton
+								className="h-2.5 rounded-sm"
+								style={{ width: `${60 + i * 12}px` }}
+							/>
+						</div>
+					))}
+				</div>
+
+				{/* Group 2 */}
+				<div className="px-2 py-1 flex items-center gap-1">
+					<Skeleton className="size-2.5 rounded-sm" />
+					<Skeleton className="size-3.5 rounded-full" />
+					<Skeleton className="h-2.5 w-16 rounded-sm" />
+				</div>
+				<div className="ml-3 border-l border-sidebar-border/50 space-y-px">
+					{[1, 2].map((i) => (
+						<div key={i} className="flex items-center gap-1 pl-2 pr-2 py-0.5">
+							<Skeleton className="size-3.5 shrink-0 rounded-full" />
+							<Skeleton
+								className="h-2.5 rounded-sm"
+								style={{ width: `${50 + i * 15}px` }}
+							/>
+						</div>
+					))}
+				</div>
 			</div>
 		</>
 	);
