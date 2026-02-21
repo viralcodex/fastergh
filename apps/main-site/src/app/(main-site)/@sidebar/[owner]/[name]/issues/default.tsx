@@ -33,6 +33,22 @@ async function Content({
 		);
 	}
 
+	return (
+		<SidebarClient initialRepos={initialRepos}>
+			<RepoListShell paramsPromise={paramsPromise} activeTab="issues">
+				<IssueListContent owner={owner} name={name} />
+			</RepoListShell>
+		</SidebarClient>
+	);
+}
+
+async function IssueListContent({
+	owner,
+	name,
+}: {
+	owner: string;
+	name: string;
+}) {
 	const [initialData, overview] = await Promise.all([
 		serverQueries.listIssues
 			.queryPromise({
@@ -50,15 +66,11 @@ async function Content({
 	]);
 
 	return (
-		<SidebarClient initialRepos={initialRepos}>
-			<RepoListShell paramsPromise={paramsPromise} activeTab="issues">
-				<IssueListClient
-					owner={owner}
-					name={name}
-					initialData={initialData}
-					repositoryId={overview?.repositoryId ?? null}
-				/>
-			</RepoListShell>
-		</SidebarClient>
+		<IssueListClient
+			owner={owner}
+			name={name}
+			initialData={initialData}
+			repositoryId={overview?.repositoryId ?? null}
+		/>
 	);
 }

@@ -33,19 +33,31 @@ async function Content({
 		);
 	}
 
+	return (
+		<SidebarClient initialRepos={initialRepos}>
+			<RepoListShell paramsPromise={paramsPromise} activeTab="actions">
+				<WorkflowRunListContent owner={owner} name={name} />
+			</RepoListShell>
+		</SidebarClient>
+	);
+}
+
+async function WorkflowRunListContent({
+	owner,
+	name,
+}: {
+	owner: string;
+	name: string;
+}) {
 	const initialData = await serverQueries.listWorkflowRuns
 		.queryPromise({ ownerLogin: owner, name })
 		.catch(() => []);
 
 	return (
-		<SidebarClient initialRepos={initialRepos}>
-			<RepoListShell paramsPromise={paramsPromise} activeTab="actions">
-				<WorkflowRunListClient
-					owner={owner}
-					name={name}
-					initialData={initialData}
-				/>
-			</RepoListShell>
-		</SidebarClient>
+		<WorkflowRunListClient
+			owner={owner}
+			name={name}
+			initialData={initialData}
+		/>
 	);
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { Result, useAtomValue } from "@effect-atom/atom-react";
 import { useSubscriptionWithInitial } from "@packages/confect/rpc";
 import { Badge } from "@packages/ui/components/badge";
 import { Button } from "@packages/ui/components/button";
@@ -21,14 +20,13 @@ import {
 } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
 import { ScrollArea } from "@packages/ui/components/scroll-area";
-import { Skeleton } from "@packages/ui/components/skeleton";
 import { GitHubIcon } from "@packages/ui/icons/index";
 import { authClient } from "@packages/ui/lib/auth-client";
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -154,6 +152,28 @@ type DashboardQuery = {
 };
 
 // ---------------------------------------------------------------------------
+// Shared hook — each section independently subscribes to the dashboard
+// ---------------------------------------------------------------------------
+
+function useDashboardData(
+	initialData: DashboardData,
+	query: DashboardQuery,
+): DashboardData {
+	const client = useProjectionQueries();
+	const dashboardAtom = useMemo(
+		() =>
+			client.getHomeDashboard.subscription({
+				scope: query.scope,
+				ownerLogin: query.ownerLogin,
+				repoFullName: query.repoFullName,
+				days: query.days,
+			}),
+		[client, query.days, query.ownerLogin, query.repoFullName, query.scope],
+	);
+	return useSubscriptionWithInitial(dashboardAtom, initialData);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -170,9 +190,82 @@ function formatRelative(timestamp: number): string {
 	});
 }
 
+function dedupePrs(data: DashboardData): Array<DashboardPrItem> {
+	const seen = new Set<string>();
+	const result: Array<DashboardPrItem> = [];
+	for (const pr of [
+		...data.yourPrs,
+		...data.needsAttentionPrs,
+		...data.recentPrs,
+	]) {
+		const key = `${pr.ownerLogin}/${pr.repoName}#${pr.number}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		result.push(pr);
+	}
+	result.sort((a, b) => b.githubUpdatedAt - a.githubUpdatedAt);
+	return result;
+}
+
 // ---------------------------------------------------------------------------
-// Inline Command Palette
+// Sign-in CTA (pure client — no data dependency, just auth state)
 // ---------------------------------------------------------------------------
+
+export function SignInCta() {
+	const session = authClient.useSession();
+
+	if (session.isPending || session.data !== null) {
+		return null;
+	}
+
+	return (
+		<div className="mb-4 flex items-center gap-3 rounded-lg border border-dashed border-border bg-card/60 px-4 py-3">
+			<GitHubIcon className="size-5 shrink-0 text-foreground/40" />
+			<div className="min-w-0 flex-1">
+				<p className="text-xs font-medium text-foreground">
+					Sign in to see your personal feed
+				</p>
+				<p className="text-[11px] text-muted-foreground">
+					Review requests, your PRs, and what&apos;s changed since you last
+					looked.
+				</p>
+			</div>
+			<Button
+				size="sm"
+				className="h-7 shrink-0 gap-1.5 text-xs"
+				onClick={() => {
+					authClient.signIn.social({ provider: "github" });
+				}}
+			>
+				<GitHubIcon className="size-3" />
+				Sign in
+			</Button>
+		</div>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Command Palette
+// ---------------------------------------------------------------------------
+
+export function CommandPaletteClient({
+	initialData,
+	query,
+}: {
+	initialData: DashboardData;
+	query: DashboardQuery;
+}) {
+	const data = useDashboardData(initialData, query);
+	const allPrs = useMemo(() => dedupePrs(data), [data]);
+
+	return (
+		<DashboardCommandPalette
+			repos={data.repos}
+			prs={allPrs}
+			issues={data.recentIssues}
+		/>
+	);
+}
 
 function DashboardCommandPalette({
 	repos,
@@ -339,159 +432,28 @@ function DashboardCommandPalette({
 }
 
 // ---------------------------------------------------------------------------
-// Main Dashboard
+// Attention banner
 // ---------------------------------------------------------------------------
 
-export function HomeDashboard({
-	initialDashboardPromise,
+export function AttentionBannerClient({
+	initialData,
 	query,
 }: {
-	initialDashboardPromise: Promise<DashboardData>;
+	initialData: DashboardData;
 	query: DashboardQuery;
 }) {
-	const initialDashboard = use(initialDashboardPromise);
-	const session = authClient.useSession();
-	const client = useProjectionQueries();
-
-	const dashboardAtom = useMemo(
-		() =>
-			client.getHomeDashboard.subscription({
-				scope: query.scope,
-				ownerLogin: query.ownerLogin,
-				repoFullName: query.repoFullName,
-				days: query.days,
-			}),
-		[client, query.days, query.ownerLogin, query.repoFullName, query.scope],
+	const data = useDashboardData(initialData, query);
+	const ciFailures = useMemo(
+		() => data.blockedItems.filter((b) => b.type === "ci_failure"),
+		[data.blockedItems],
 	);
-	const dashboardResult = useAtomValue(dashboardAtom);
-	const data = useSubscriptionWithInitial(dashboardAtom, initialDashboard);
 
-	if (session.isPending || Result.isInitial(dashboardResult)) {
-		return <DashboardSkeleton />;
+	if (ciFailures.length === 0) {
+		return null;
 	}
 
-	const isSignedIn = session.data !== null;
-
-	// Merge all PR sources for the column, deduped
-	const allPrsSeen = new Set<string>();
-	const allPrs: Array<DashboardPrItem> = [];
-	for (const pr of [
-		...data.yourPrs,
-		...data.needsAttentionPrs,
-		...data.recentPrs,
-	]) {
-		const key = `${pr.ownerLogin}/${pr.repoName}#${pr.number}`;
-		if (allPrsSeen.has(key)) continue;
-		allPrsSeen.add(key);
-		allPrs.push(pr);
-	}
-	allPrs.sort((a, b) => b.githubUpdatedAt - a.githubUpdatedAt);
-
-	return (
-		<div className="h-full overflow-y-auto bg-dotgrid">
-			<div className="mx-auto max-w-[1600px] px-4 py-4 md:px-6 md:py-5">
-				{/* Command palette - auto-focused */}
-				<div className="mb-4">
-					<DashboardCommandPalette
-						repos={data.repos}
-						prs={allPrs}
-						issues={data.recentIssues}
-					/>
-				</div>
-
-				{/* Sign-in CTA */}
-				{!isSignedIn && (
-					<div className="mb-4 flex items-center gap-3 rounded-lg border border-dashed border-border bg-card/60 px-4 py-3">
-						<GitHubIcon className="size-5 shrink-0 text-foreground/40" />
-						<div className="min-w-0 flex-1">
-							<p className="text-xs font-medium text-foreground">
-								Sign in to see your personal feed
-							</p>
-							<p className="text-[11px] text-muted-foreground">
-								Review requests, your PRs, and what&apos;s changed since you
-								last looked.
-							</p>
-						</div>
-						<Button
-							size="sm"
-							className="h-7 shrink-0 gap-1.5 text-xs"
-							onClick={() => {
-								authClient.signIn.social({ provider: "github" });
-							}}
-						>
-							<GitHubIcon className="size-3" />
-							Sign in
-						</Button>
-					</div>
-				)}
-
-				{/* Attention banner — CI failures */}
-				{data.blockedItems.filter((b) => b.type === "ci_failure").length >
-					0 && (
-					<AttentionBanner
-						items={data.blockedItems.filter((b) => b.type === "ci_failure")}
-					/>
-				)}
-
-				{/* Three-column grid */}
-				<div className="grid gap-4 lg:grid-cols-3">
-					{/* Column 1: Pull Requests */}
-					<Column
-						title="Pull Requests"
-						icon={<GitPullRequest className="size-3.5" />}
-						count={allPrs.length}
-					>
-						{allPrs.length === 0 && (
-							<EmptyState>No recent pull requests.</EmptyState>
-						)}
-						{allPrs.slice(0, 30).map((pr) => (
-							<PrRow
-								key={`${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
-								pr={pr}
-								isOwned={pr.authorLogin === data.githubLogin}
-							/>
-						))}
-					</Column>
-
-					{/* Column 2: Issues */}
-					<Column
-						title="Issues"
-						icon={<CircleDot className="size-3.5" />}
-						count={data.recentIssues.length}
-					>
-						{data.recentIssues.length === 0 && (
-							<EmptyState>No recent issues.</EmptyState>
-						)}
-						{data.recentIssues.map((issue) => (
-							<IssueRow
-								key={`${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
-								issue={issue}
-							/>
-						))}
-					</Column>
-
-					{/* Column 3: Repositories */}
-					<Column
-						title="Repositories"
-						icon={<GitBranch className="size-3.5" />}
-						count={data.repos.length}
-					>
-						{data.repos.length === 0 && (
-							<EmptyState>No repositories connected yet.</EmptyState>
-						)}
-						{data.repos.map((repo) => (
-							<RepoRow key={repo.fullName} repo={repo} />
-						))}
-					</Column>
-				</div>
-			</div>
-		</div>
-	);
+	return <AttentionBanner items={ciFailures} />;
 }
-
-// ---------------------------------------------------------------------------
-// Attention banner for CI failures
-// ---------------------------------------------------------------------------
 
 function AttentionBanner({
 	items,
@@ -556,6 +518,99 @@ function FailureIcon({ className }: { className?: string }) {
 		>
 			<path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z" />
 		</svg>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Pull Requests Column
+// ---------------------------------------------------------------------------
+
+export function PrColumnClient({
+	initialData,
+	query,
+}: {
+	initialData: DashboardData;
+	query: DashboardQuery;
+}) {
+	const data = useDashboardData(initialData, query);
+	const allPrs = useMemo(() => dedupePrs(data), [data]);
+
+	return (
+		<Column
+			title="Pull Requests"
+			icon={<GitPullRequest className="size-3.5" />}
+			count={allPrs.length}
+		>
+			{allPrs.length === 0 && <EmptyState>No recent pull requests.</EmptyState>}
+			{allPrs.slice(0, 30).map((pr) => (
+				<PrRow
+					key={`${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
+					pr={pr}
+					isOwned={pr.authorLogin === data.githubLogin}
+				/>
+			))}
+		</Column>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Issues Column
+// ---------------------------------------------------------------------------
+
+export function IssuesColumnClient({
+	initialData,
+	query,
+}: {
+	initialData: DashboardData;
+	query: DashboardQuery;
+}) {
+	const data = useDashboardData(initialData, query);
+
+	return (
+		<Column
+			title="Issues"
+			icon={<CircleDot className="size-3.5" />}
+			count={data.recentIssues.length}
+		>
+			{data.recentIssues.length === 0 && (
+				<EmptyState>No recent issues.</EmptyState>
+			)}
+			{data.recentIssues.map((issue) => (
+				<IssueRow
+					key={`${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
+					issue={issue}
+				/>
+			))}
+		</Column>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Repositories Column
+// ---------------------------------------------------------------------------
+
+export function ReposColumnClient({
+	initialData,
+	query,
+}: {
+	initialData: DashboardData;
+	query: DashboardQuery;
+}) {
+	const data = useDashboardData(initialData, query);
+
+	return (
+		<Column
+			title="Repositories"
+			icon={<GitBranch className="size-3.5" />}
+			count={data.repos.length}
+		>
+			{data.repos.length === 0 && (
+				<EmptyState>No repositories connected yet.</EmptyState>
+			)}
+			{data.repos.map((repo) => (
+				<RepoRow key={repo.fullName} repo={repo} />
+			))}
+		</Column>
 	);
 }
 
@@ -771,31 +826,5 @@ function RepoRow({ repo }: { repo: RepoSummary }) {
 				</Badge>
 			)}
 		</Link>
-	);
-}
-
-// ---------------------------------------------------------------------------
-// Skeleton
-// ---------------------------------------------------------------------------
-
-export function DashboardSkeleton() {
-	return (
-		<div className="h-full overflow-y-auto bg-dotgrid px-4 py-4 md:px-6 md:py-5">
-			<Skeleton className="mb-4 h-10 w-full rounded-lg" />
-			<div className="grid gap-4 lg:grid-cols-3">
-				<div className="space-y-0">
-					<Skeleton className="mb-1.5 h-4 w-28" />
-					<Skeleton className="h-72 rounded-lg" />
-				</div>
-				<div className="space-y-0">
-					<Skeleton className="mb-1.5 h-4 w-28" />
-					<Skeleton className="h-72 rounded-lg" />
-				</div>
-				<div className="space-y-0">
-					<Skeleton className="mb-1.5 h-4 w-28" />
-					<Skeleton className="h-72 rounded-lg" />
-				</div>
-			</div>
-		</div>
 	);
 }

@@ -33,6 +33,16 @@ async function Content({
 		);
 	}
 
+	return (
+		<SidebarClient initialRepos={initialRepos}>
+			<RepoListShell paramsPromise={paramsPromise} activeTab="pulls">
+				<PrListContent owner={owner} name={name} />
+			</RepoListShell>
+		</SidebarClient>
+	);
+}
+
+async function PrListContent({ owner, name }: { owner: string; name: string }) {
 	const initialPrs = await serverQueries.listPullRequests
 		.queryPromise({
 			ownerLogin: owner,
@@ -41,11 +51,5 @@ async function Content({
 		})
 		.catch(() => []);
 
-	return (
-		<SidebarClient initialRepos={initialRepos}>
-			<RepoListShell paramsPromise={paramsPromise} activeTab="pulls">
-				<PrListClient owner={owner} name={name} initialData={initialPrs} />
-			</RepoListShell>
-		</SidebarClient>
-	);
+	return <PrListClient owner={owner} name={name} initialData={initialPrs} />;
 }

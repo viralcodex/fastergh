@@ -1,10 +1,17 @@
+import { Skeleton } from "@packages/ui/components/skeleton";
+import { connection } from "next/server";
 import { Suspense } from "react";
+import { serverQueries } from "@/lib/server-queries";
 import { SyncProgressOverlay } from "../../../_components/sync-progress-client";
-import { RepoOverviewPanel } from "./repo-overview-client";
+import {
+	RecentIssuesPanel,
+	RecentPrsPanel,
+	RepoOverviewHeader,
+} from "./repo-overview-client";
 
 /**
  * Detail panel for the repo overview page (/:owner/:name).
- * Shows the RepoOverviewPanel with stats, recent PRs, and issues.
+ * Each data section gets its own async server component + Suspense boundary.
  */
 export default async function RepoDetailDefault({
 	params,
@@ -14,10 +21,122 @@ export default async function RepoDetailDefault({
 	const { owner, name } = await params;
 
 	return (
-		<Suspense>
-			<SyncProgressOverlay owner={owner} name={name}>
-				<RepoOverviewPanel owner={owner} name={name} />
-			</SyncProgressOverlay>
-		</Suspense>
+		<SyncProgressOverlay owner={owner} name={name}>
+			<div className="h-full overflow-y-auto">
+				<div className="px-6 py-8">
+					<Suspense fallback={<OverviewHeaderSkeleton />}>
+						<RepoOverviewHeaderContent owner={owner} name={name} />
+					</Suspense>
+					<Suspense fallback={<PrsSkeleton />}>
+						<RecentPrsContent owner={owner} name={name} />
+					</Suspense>
+					<Suspense fallback={<IssuesSkeleton />}>
+						<RecentIssuesContent owner={owner} name={name} />
+					</Suspense>
+				</div>
+			</div>
+		</SyncProgressOverlay>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Async server components — each fetches its own data (deduped by confect)
+// ---------------------------------------------------------------------------
+
+async function RepoOverviewHeaderContent({
+	owner,
+	name,
+}: {
+	owner: string;
+	name: string;
+}) {
+	await connection();
+	const initialOverview = await serverQueries.getRepoOverview
+		.queryPromise({ ownerLogin: owner, name })
+		.catch(() => null);
+	return (
+		<RepoOverviewHeader
+			owner={owner}
+			name={name}
+			initialOverview={initialOverview}
+		/>
+	);
+}
+
+async function RecentPrsContent({
+	owner,
+	name,
+}: {
+	owner: string;
+	name: string;
+}) {
+	await connection();
+	const initialPrs = await serverQueries.listPullRequests
+		.queryPromise({ ownerLogin: owner, name, state: "open" })
+		.catch(() => []);
+	return <RecentPrsPanel owner={owner} name={name} initialPrs={initialPrs} />;
+}
+
+async function RecentIssuesContent({
+	owner,
+	name,
+}: {
+	owner: string;
+	name: string;
+}) {
+	await connection();
+	const initialIssues = await serverQueries.listIssues
+		.queryPromise({ ownerLogin: owner, name, state: "open" })
+		.catch(() => []);
+	return (
+		<RecentIssuesPanel
+			owner={owner}
+			name={name}
+			initialIssues={initialIssues}
+		/>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Skeletons
+// ---------------------------------------------------------------------------
+
+function OverviewHeaderSkeleton() {
+	return (
+		<>
+			<div className="mb-6">
+				<Skeleton className="h-6 w-48 mb-1" />
+				<Skeleton className="h-3 w-32" />
+			</div>
+			<div className="grid grid-cols-2 gap-3 mb-6">
+				<Skeleton className="h-16 rounded-lg" />
+				<Skeleton className="h-16 rounded-lg" />
+			</div>
+		</>
+	);
+}
+
+function PrsSkeleton() {
+	return (
+		<div className="mb-6">
+			<Skeleton className="h-4 w-32 mb-2" />
+			<div className="space-y-2">
+				<Skeleton className="h-12 rounded-lg" />
+				<Skeleton className="h-12 rounded-lg" />
+				<Skeleton className="h-12 rounded-lg" />
+			</div>
+		</div>
+	);
+}
+
+function IssuesSkeleton() {
+	return (
+		<div className="mb-6">
+			<Skeleton className="h-4 w-28 mb-2" />
+			<div className="space-y-2">
+				<Skeleton className="h-12 rounded-lg" />
+				<Skeleton className="h-12 rounded-lg" />
+			</div>
+		</div>
 	);
 }

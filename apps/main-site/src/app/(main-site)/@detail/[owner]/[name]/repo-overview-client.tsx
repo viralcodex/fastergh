@@ -1,6 +1,6 @@
 "use client";
 
-import { Result, useAtomValue } from "@effect-atom/atom-react";
+import { useSubscriptionWithInitial } from "@packages/confect/rpc";
 import { Badge } from "@packages/ui/components/badge";
 import {
 	ArrowRight,
@@ -9,11 +9,13 @@ import {
 	MessageCircle,
 } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
-import { Skeleton } from "@packages/ui/components/skeleton";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
-import { Option } from "effect";
 import { useMemo } from "react";
 import { InstallGitHubAppButton } from "../../../_components/install-github-app-button";
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
 
 function formatRelative(timestamp: number): string {
 	const diff = Math.floor((Date.now() - timestamp) / 1000);
@@ -28,15 +30,32 @@ function formatRelative(timestamp: number): string {
 	});
 }
 
-export function RepoOverviewPanel({
+// ---------------------------------------------------------------------------
+// RepoOverviewHeader — header + stats cards (uses getRepoOverview)
+// ---------------------------------------------------------------------------
+
+export type RepoOverview = {
+	readonly repositoryId: number;
+	readonly fullName: string;
+	readonly ownerLogin: string;
+	readonly name: string;
+	readonly openPrCount: number;
+	readonly openIssueCount: number;
+	readonly failingCheckCount: number;
+	readonly lastPushAt: number | null;
+	readonly updatedAt: number;
+};
+
+export function RepoOverviewHeader({
 	owner,
 	name,
+	initialOverview,
 }: {
 	owner: string;
 	name: string;
+	initialOverview: RepoOverview | null;
 }) {
 	const client = useProjectionQueries();
-
 	const overviewAtom = useMemo(
 		() =>
 			client.getRepoOverview.subscription({
@@ -45,71 +64,11 @@ export function RepoOverviewPanel({
 			}),
 		[client, owner, name],
 	);
-	const overviewResult = useAtomValue(overviewAtom);
-
-	const prsAtom = useMemo(
-		() =>
-			client.listPullRequests.subscription({
-				ownerLogin: owner,
-				name,
-				state: "open",
-			}),
-		[client, owner, name],
-	);
-	const prsResult = useAtomValue(prsAtom);
-
-	const issuesAtom = useMemo(
-		() =>
-			client.listIssues.subscription({
-				ownerLogin: owner,
-				name,
-				state: "open",
-			}),
-		[client, owner, name],
-	);
-	const issuesResult = useAtomValue(issuesAtom);
-
-	const overview = (() => {
-		const v = Result.value(overviewResult);
-		if (Option.isSome(v)) return v.value;
-		return null;
-	})();
-
-	const prs = (() => {
-		const v = Result.value(prsResult);
-		if (Option.isSome(v)) return v.value;
-		return null;
-	})();
-
-	const issues = (() => {
-		const v = Result.value(issuesResult);
-		if (Option.isSome(v)) return v.value;
-		return null;
-	})();
-
-	if (Result.isInitial(overviewResult)) {
-		return (
-			<div className="h-full overflow-y-auto">
-				<div className="px-6 py-8">
-					<Skeleton className="h-6 w-48 mb-1" />
-					<Skeleton className="h-3 w-32 mb-6" />
-					<div className="grid grid-cols-2 gap-3 mb-6">
-						<Skeleton className="h-16 rounded-lg" />
-						<Skeleton className="h-16 rounded-lg" />
-					</div>
-					<div className="space-y-2">
-						<Skeleton className="h-12 rounded-lg" />
-						<Skeleton className="h-12 rounded-lg" />
-						<Skeleton className="h-12 rounded-lg" />
-					</div>
-				</div>
-			</div>
-		);
-	}
+	const overview = useSubscriptionWithInitial(overviewAtom, initialOverview);
 
 	if (overview === null) {
 		return (
-			<div className="flex h-full items-center justify-center px-6">
+			<div className="flex items-center justify-center px-6 py-12">
 				<div className="w-full max-w-md rounded-xl border bg-card p-6 text-center">
 					<h1 className="text-lg font-semibold text-foreground">
 						{owner}/{name}
@@ -127,164 +86,242 @@ export function RepoOverviewPanel({
 	}
 
 	return (
-		<div className="h-full overflow-y-auto">
-			<div className="px-6 py-8">
-				{/* Repo header */}
-				<div className="mb-6">
-					<h1 className="text-lg font-bold tracking-tight text-foreground">
-						{owner}/{name}
-					</h1>
-					{overview?.lastPushAt && (
-						<p className="text-[11px] text-muted-foreground mt-0.5">
-							Last pushed {formatRelative(overview.lastPushAt)}
-						</p>
-					)}
+		<>
+			{/* Repo header */}
+			<div className="mb-6">
+				<h1 className="text-lg font-bold tracking-tight text-foreground">
+					{owner}/{name}
+				</h1>
+				{overview.lastPushAt && (
+					<p className="text-[11px] text-muted-foreground mt-0.5">
+						Last pushed {formatRelative(overview.lastPushAt)}
+					</p>
+				)}
+			</div>
+
+			{/* Quick stats */}
+			<div className="grid grid-cols-2 gap-3 mb-6">
+				<Link
+					href={`/${owner}/${name}/pulls`}
+					className="rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted no-underline group"
+				>
+					<div className="flex items-center gap-1.5 mb-1">
+						<GitPullRequest className="size-3 text-github-open" />
+						<span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+							PRs
+						</span>
+					</div>
+					<p className="text-xl font-bold tabular-nums text-foreground">
+						{overview.openPrCount}
+					</p>
+				</Link>
+				<Link
+					href={`/${owner}/${name}/issues`}
+					className="rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted no-underline group"
+				>
+					<div className="flex items-center gap-1.5 mb-1">
+						<CircleDot className="size-3 text-github-info" />
+						<span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+							Issues
+						</span>
+					</div>
+					<p className="text-xl font-bold tabular-nums text-foreground">
+						{overview.openIssueCount}
+					</p>
+				</Link>
+			</div>
+		</>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// RecentPrsPanel — list of up to 5 open PRs (uses listPullRequests)
+// ---------------------------------------------------------------------------
+
+type PrItem = {
+	readonly number: number;
+	readonly state: "open" | "closed";
+	readonly optimisticState: "pending" | "failed" | "confirmed" | null;
+	readonly optimisticErrorMessage: string | null;
+	readonly draft: boolean;
+	readonly title: string;
+	readonly authorLogin: string | null;
+	readonly authorAvatarUrl: string | null;
+	readonly headRefName: string;
+	readonly baseRefName: string;
+	readonly commentCount: number;
+	readonly reviewCount: number;
+	readonly lastCheckConclusion: string | null;
+	readonly githubUpdatedAt: number;
+};
+
+export function RecentPrsPanel({
+	owner,
+	name,
+	initialPrs,
+}: {
+	owner: string;
+	name: string;
+	initialPrs: ReadonlyArray<PrItem>;
+}) {
+	const client = useProjectionQueries();
+	const prsAtom = useMemo(
+		() =>
+			client.listPullRequests.subscription({
+				ownerLogin: owner,
+				name,
+				state: "open",
+			}),
+		[client, owner, name],
+	);
+	const prs = useSubscriptionWithInitial(prsAtom, initialPrs);
+
+	if (prs.length === 0) return null;
+
+	return (
+		<div className="mb-6">
+			<div className="flex items-center justify-between mb-2">
+				<div className="flex items-center gap-1.5">
+					<GitPullRequest className="size-3.5 text-github-open" />
+					<h2 className="text-xs font-semibold text-foreground">
+						Open Pull Requests
+					</h2>
 				</div>
+				<Link
+					href={`/${owner}/${name}/pulls`}
+					className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground no-underline transition-colors"
+				>
+					View all
+					<ArrowRight className="size-2.5" />
+				</Link>
+			</div>
+			<div className="divide-y rounded-lg border">
+				{prs.slice(0, 5).map((pr) => (
+					<Link
+						key={pr.number}
+						href={`/${owner}/${name}/pull/${pr.number}`}
+						className="flex items-start gap-2 px-3 py-2 transition-colors hover:bg-muted no-underline"
+					>
+						<PrStateIcon state={pr.state} draft={pr.draft} />
+						<div className="min-w-0 flex-1">
+							<div className="flex items-center gap-1.5">
+								<span className="font-medium text-xs truncate text-foreground">
+									{pr.title}
+								</span>
+								{pr.draft && (
+									<Badge
+										variant="outline"
+										className="text-[9px] px-1 py-0 shrink-0"
+									>
+										Draft
+									</Badge>
+								)}
+							</div>
+							<div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+								<span>#{pr.number}</span>
+								{pr.authorLogin && <span>{pr.authorLogin}</span>}
+								<span>{formatRelative(pr.githubUpdatedAt)}</span>
+								{pr.commentCount > 0 && (
+									<span className="flex items-center gap-0.5">
+										<MessageCircle className="size-2.5" />
+										{pr.commentCount}
+									</span>
+								)}
+							</div>
+						</div>
+						{pr.lastCheckConclusion && (
+							<CheckDot conclusion={pr.lastCheckConclusion} />
+						)}
+					</Link>
+				))}
+			</div>
+		</div>
+	);
+}
 
-				{/* Quick stats */}
-				{overview && (
-					<div className="grid grid-cols-2 gap-3 mb-6">
-						<Link
-							href={`/${owner}/${name}/pulls`}
-							className="rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted no-underline group"
-						>
-							<div className="flex items-center gap-1.5 mb-1">
-								<GitPullRequest className="size-3 text-github-open" />
-								<span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-									PRs
+// ---------------------------------------------------------------------------
+// RecentIssuesPanel — list of up to 5 open issues (uses listIssues)
+// ---------------------------------------------------------------------------
+
+type IssueItem = {
+	readonly number: number;
+	readonly state: "open" | "closed";
+	readonly optimisticState: "pending" | "failed" | "confirmed" | null;
+	readonly optimisticErrorMessage: string | null;
+	readonly title: string;
+	readonly authorLogin: string | null;
+	readonly authorAvatarUrl: string | null;
+	readonly labelNames: ReadonlyArray<string>;
+	readonly commentCount: number;
+	readonly githubUpdatedAt: number;
+};
+
+export function RecentIssuesPanel({
+	owner,
+	name,
+	initialIssues,
+}: {
+	owner: string;
+	name: string;
+	initialIssues: ReadonlyArray<IssueItem>;
+}) {
+	const client = useProjectionQueries();
+	const issuesAtom = useMemo(
+		() =>
+			client.listIssues.subscription({
+				ownerLogin: owner,
+				name,
+				state: "open",
+			}),
+		[client, owner, name],
+	);
+	const issues = useSubscriptionWithInitial(issuesAtom, initialIssues);
+
+	if (issues.length === 0) return null;
+
+	return (
+		<div className="mb-6">
+			<div className="flex items-center justify-between mb-2">
+				<div className="flex items-center gap-1.5">
+					<CircleDot className="size-3.5 text-github-info" />
+					<h2 className="text-xs font-semibold text-foreground">Open Issues</h2>
+				</div>
+				<Link
+					href={`/${owner}/${name}/issues`}
+					className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground no-underline transition-colors"
+				>
+					View all
+					<ArrowRight className="size-2.5" />
+				</Link>
+			</div>
+			<div className="divide-y rounded-lg border">
+				{issues.slice(0, 5).map((issue) => (
+					<Link
+						key={issue.number}
+						href={`/${owner}/${name}/issues/${issue.number}`}
+						className="flex items-start gap-2 px-3 py-2 transition-colors hover:bg-muted no-underline"
+					>
+						<IssueStateIcon state={issue.state} />
+						<div className="min-w-0 flex-1">
+							<div className="flex items-center gap-1.5">
+								<span className="font-medium text-xs truncate text-foreground">
+									{issue.title}
 								</span>
 							</div>
-							<p className="text-xl font-bold tabular-nums text-foreground">
-								{overview.openPrCount}
-							</p>
-						</Link>
-						<Link
-							href={`/${owner}/${name}/issues`}
-							className="rounded-lg border px-3 py-2.5 transition-colors hover:bg-muted no-underline group"
-						>
-							<div className="flex items-center gap-1.5 mb-1">
-								<CircleDot className="size-3 text-github-info" />
-								<span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-									Issues
-								</span>
+							<div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+								<span>#{issue.number}</span>
+								{issue.authorLogin && <span>{issue.authorLogin}</span>}
+								<span>{formatRelative(issue.githubUpdatedAt)}</span>
+								{issue.commentCount > 0 && (
+									<span className="flex items-center gap-0.5">
+										<MessageCircle className="size-2.5" />
+										{issue.commentCount}
+									</span>
+								)}
 							</div>
-							<p className="text-xl font-bold tabular-nums text-foreground">
-								{overview.openIssueCount}
-							</p>
-						</Link>
-					</div>
-				)}
-
-				{/* Recent open PRs */}
-				{prs !== null && prs.length > 0 && (
-					<div className="mb-6">
-						<div className="flex items-center justify-between mb-2">
-							<div className="flex items-center gap-1.5">
-								<GitPullRequest className="size-3.5 text-github-open" />
-								<h2 className="text-xs font-semibold text-foreground">
-									Open Pull Requests
-								</h2>
-							</div>
-							<Link
-								href={`/${owner}/${name}/pulls`}
-								className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground no-underline transition-colors"
-							>
-								View all
-								<ArrowRight className="size-2.5" />
-							</Link>
 						</div>
-						<div className="divide-y rounded-lg border">
-							{prs.slice(0, 5).map((pr) => (
-								<Link
-									key={pr.number}
-									href={`/${owner}/${name}/pull/${pr.number}`}
-									className="flex items-start gap-2 px-3 py-2 transition-colors hover:bg-muted no-underline"
-								>
-									<PrStateIcon state={pr.state} draft={pr.draft} />
-									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-1.5">
-											<span className="font-medium text-xs truncate text-foreground">
-												{pr.title}
-											</span>
-											{pr.draft && (
-												<Badge
-													variant="outline"
-													className="text-[9px] px-1 py-0 shrink-0"
-												>
-													Draft
-												</Badge>
-											)}
-										</div>
-										<div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
-											<span>#{pr.number}</span>
-											{pr.authorLogin && <span>{pr.authorLogin}</span>}
-											<span>{formatRelative(pr.githubUpdatedAt)}</span>
-											{pr.commentCount > 0 && (
-												<span className="flex items-center gap-0.5">
-													<MessageCircle className="size-2.5" />
-													{pr.commentCount}
-												</span>
-											)}
-										</div>
-									</div>
-									{pr.lastCheckConclusion && (
-										<CheckDot conclusion={pr.lastCheckConclusion} />
-									)}
-								</Link>
-							))}
-						</div>
-					</div>
-				)}
-
-				{/* Recent open issues */}
-				{issues !== null && issues.length > 0 && (
-					<div className="mb-6">
-						<div className="flex items-center justify-between mb-2">
-							<div className="flex items-center gap-1.5">
-								<CircleDot className="size-3.5 text-github-info" />
-								<h2 className="text-xs font-semibold text-foreground">
-									Open Issues
-								</h2>
-							</div>
-							<Link
-								href={`/${owner}/${name}/issues`}
-								className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground no-underline transition-colors"
-							>
-								View all
-								<ArrowRight className="size-2.5" />
-							</Link>
-						</div>
-						<div className="divide-y rounded-lg border">
-							{issues.slice(0, 5).map((issue) => (
-								<Link
-									key={issue.number}
-									href={`/${owner}/${name}/issues/${issue.number}`}
-									className="flex items-start gap-2 px-3 py-2 transition-colors hover:bg-muted no-underline"
-								>
-									<IssueStateIcon state={issue.state} />
-									<div className="min-w-0 flex-1">
-										<div className="flex items-center gap-1.5">
-											<span className="font-medium text-xs truncate text-foreground">
-												{issue.title}
-											</span>
-										</div>
-										<div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
-											<span>#{issue.number}</span>
-											{issue.authorLogin && <span>{issue.authorLogin}</span>}
-											<span>{formatRelative(issue.githubUpdatedAt)}</span>
-											{issue.commentCount > 0 && (
-												<span className="flex items-center gap-0.5">
-													<MessageCircle className="size-2.5" />
-													{issue.commentCount}
-												</span>
-											)}
-										</div>
-									</div>
-								</Link>
-							))}
-						</div>
-					</div>
-				)}
+					</Link>
+				))}
 			</div>
 		</div>
 	);
