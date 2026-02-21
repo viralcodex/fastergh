@@ -2,7 +2,7 @@ import * as HttpClient from "@effect/platform/HttpClient";
 import * as HttpClientError from "@effect/platform/HttpClientError";
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
 import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Schema as S } from "effect";
 import {
 	type GitHubClient,
 	make as makeGeneratedClient,
@@ -401,5 +401,95 @@ export class GitHubApiClient extends Context.Tag("@quickhub/GitHubApiClient")<
 			}),
 		);
 }
+
+// ---------------------------------------------------------------------------
+// Lenient array decoding
+// ---------------------------------------------------------------------------
+
+/**
+ * Decode a raw JSON array item-by-item through an Effect Schema.
+ * Items that fail to parse are collected as `{ index, error, raw }` and
+ * returned separately so callers can dead-letter them without crashing
+ * the entire fetch.
+ *
+ * Usage in bootstrap steps:
+ * ```ts
+ * const { items, skipped } = decodeLenientArray(rawJsonArray, PullRequestSimple);
+ * // items: PullRequestSimple[]
+ * // skipped: { index, error, raw }[]
+ * ```
+ */
+export const decodeLenientArray = <A, I>(
+	rawArray: ReadonlyArray<unknown>,
+	schema: S.Schema<A, I>,
+): {
+	items: Array<A>;
+	skipped: Array<{ index: number; error: string; raw: string }>;
+} => {
+	const decode = S.decodeUnknownEither(schema);
+	const items: Array<A> = [];
+	const skipped: Array<{ index: number; error: string; raw: string }> = [];
+
+	for (let i = 0; i < rawArray.length; i++) {
+		const result = decode(rawArray[i]);
+		if (result._tag === "Right") {
+			items.push(result.right);
+		} else {
+			const errorMsg = `Schema parse error at index ${i}: ${result.left.message}`;
+			let rawStr: string;
+			try {
+				rawStr = JSON.stringify(rawArray[i]);
+			} catch {
+				rawStr = String(rawArray[i]);
+			}
+			// Truncate raw to avoid huge payloads
+			skipped.push({
+				index: i,
+				error: errorMsg,
+				raw:
+					rawStr.length > 2000
+						? rawStr.slice(0, 2000) + "...(truncated)"
+						: rawStr,
+			});
+		}
+	}
+
+	return { items, skipped };
+};
+
+/**
+ * Fetch a JSON array endpoint and decode each item leniently.
+ * Uses the raw httpClient to bypass the generated client's strict schema decoding.
+ * Returns successfully parsed items + skipped items for dead-lettering.
+ */
+export const fetchArrayLenient = <A, I>(
+	schema: S.Schema<A, I>,
+	request: HttpClientRequest.HttpClientRequest,
+): Effect.Effect<
+	{
+		items: Array<A>;
+		skipped: Array<{ index: number; error: string; raw: string }>;
+	},
+	HttpClientError.HttpClientError,
+	GitHubApiClient
+> =>
+	Effect.gen(function* () {
+		const gh = yield* GitHubApiClient;
+		const response = yield* gh.httpClient.execute(request);
+		if (response.status < 200 || response.status >= 300) {
+			return yield* new HttpClientError.ResponseError({
+				request,
+				response,
+				reason: "StatusCode",
+				description: `GitHub API returned ${response.status}`,
+			});
+		}
+		const body = yield* response.text;
+		const rawArray = JSON.parse(body);
+		if (!Array.isArray(rawArray)) {
+			return { items: [], skipped: [] };
+		}
+		return decodeLenientArray(rawArray, schema);
+	});
 
 export type { GitHubClient, IGitHubApiClient };

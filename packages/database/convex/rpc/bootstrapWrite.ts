@@ -634,6 +634,33 @@ updateSyncJobStateDef.implement((args) =>
 	}),
 );
 
+// ---------------------------------------------------------------------------
+// Dead letter — items that fail schema parsing during bootstrap are stored
+// here so one bad item doesn't crash the entire step.
+// ---------------------------------------------------------------------------
+
+const deadLetterDef = factory.internalMutation({
+	payload: {
+		deliveryId: Schema.String,
+		reason: Schema.String,
+		payloadJson: Schema.String,
+	},
+	success: Schema.Struct({ inserted: Schema.Boolean }),
+});
+
+deadLetterDef.implement((args) =>
+	Effect.gen(function* () {
+		const ctx = yield* ConfectMutationCtx;
+		yield* ctx.db.insert("github_dead_letters", {
+			deliveryId: args.deliveryId,
+			reason: args.reason,
+			payloadJson: args.payloadJson,
+			createdAt: Date.now(),
+		});
+		return { inserted: true };
+	}),
+);
+
 /**
  * Internal mutations called by the bootstrap action to write fetched
  * GitHub data into normalized domain tables.
@@ -651,6 +678,7 @@ const bootstrapWriteModule = makeRpcModule(
 		upsertWorkflowJobs: upsertWorkflowJobsDef,
 		upsertUsers: upsertUsersDef,
 		updateSyncJobState: updateSyncJobStateDef,
+		deadLetter: deadLetterDef,
 	},
 	{ middlewares: DatabaseRpcModuleMiddlewares },
 );
@@ -665,6 +693,7 @@ export const {
 	upsertWorkflowJobs,
 	upsertUsers,
 	updateSyncJobState,
+	deadLetter,
 } = bootstrapWriteModule.handlers;
 export { bootstrapWriteModule };
 export type BootstrapWriteModule = typeof bootstrapWriteModule;

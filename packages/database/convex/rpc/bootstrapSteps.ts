@@ -17,14 +17,19 @@
  * The workflow's retry policy handles transient failures like rate limits.
  */
 
+import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
 import { v } from "convex/values";
 import { Effect } from "effect";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import { internalAction } from "../_generated/server";
 import { toOpenClosedState } from "../shared/coerce";
-import type { Issue, SimpleUser } from "../shared/generated_github_client";
-import { GitHubApiClient } from "../shared/githubApi";
+import {
+	type Issue,
+	PullRequestSimple,
+	type SimpleUser,
+} from "../shared/generated_github_client";
+import { fetchArrayLenient, GitHubApiClient } from "../shared/githubApi";
 import { resolveRepoToken } from "../shared/githubToken";
 import { parseIsoToMsOrNull as isoToMs } from "../shared/time";
 
@@ -261,15 +266,32 @@ export const fetchPullRequestsChunk = internalAction({
 		let nextCursor: string | null = null;
 
 		while (pagesProcessed < PAGES_PER_CHUNK) {
-			const page = await Effect.runPromise(
-				gh.client
-					.pullsList(owner, repo, {
-						state: "all",
-						per_page: 100,
-						page: currentPage,
-					})
-					.pipe(Effect.orDie),
+			const { items: page, skipped } = await Effect.runPromise(
+				fetchArrayLenient(
+					PullRequestSimple,
+					HttpClientRequest.get(`/repos/${owner}/${repo}/pulls`).pipe(
+						HttpClientRequest.setUrlParams({
+							state: "all",
+							per_page: 100,
+							page: currentPage,
+						}),
+					),
+				).pipe(Effect.provideService(GitHubApiClient, gh), Effect.orDie),
 			);
+
+			// Dead-letter items that failed to parse
+			if (skipped.length > 0) {
+				console.warn(
+					`[fetchPullRequestsChunk] ${args.fullName} page ${currentPage}: skipped ${skipped.length} items due to parse errors`,
+				);
+				for (const item of skipped) {
+					await ctx.runMutation(internal.rpc.bootstrapWrite.deadLetter, {
+						deliveryId: `bootstrap-pr:${args.repositoryId}:page${currentPage}:idx${item.index}`,
+						reason: item.error,
+						payloadJson: item.raw,
+					});
+				}
+			}
 
 			// Transform the page
 			const pullRequests = page.map((pr) => {
@@ -305,11 +327,13 @@ export const fetchPullRequestsChunk = internalAction({
 				});
 			}
 
-			totalCount += pullRequests.length;
+			// Total count includes skipped items for pagination purposes
+			const pageTotal = page.length + skipped.length;
+			totalCount += page.length;
 			pagesProcessed++;
 
 			// If we got a full page, there might be more
-			if (page.length === 100) {
+			if (pageTotal === 100) {
 				currentPage++;
 				nextCursor = String(currentPage);
 			} else {
@@ -361,26 +385,32 @@ export const fetchIssuesChunk = internalAction({
 		let nextCursor: string | null = null;
 
 		while (pagesProcessed < PAGES_PER_CHUNK) {
-			const result = await Effect.runPromise(
-				gh.client
-					.issuesListForRepo(owner, repo, {
-						state: "all",
-						per_page: 100,
-						page: currentPage,
-					})
-					.pipe(Effect.orDie),
+			const { items: pageItems, skipped } = await Effect.runPromise(
+				fetchArrayLenient(
+					Issue,
+					HttpClientRequest.get(`/repos/${owner}/${repo}/issues`).pipe(
+						HttpClientRequest.setUrlParams({
+							state: "all",
+							per_page: 100,
+							page: currentPage,
+						}),
+					),
+				).pipe(Effect.provideService(GitHubApiClient, gh), Effect.orDie),
 			);
 
-			// issuesListForRepo returns IssuesListForRepo200 | BasicError
-			// Narrow to array type
-			if (!Array.isArray(result)) {
-				// BasicError response — stop pagination
-				nextCursor = null;
-				break;
+			// Dead-letter items that failed to parse
+			if (skipped.length > 0) {
+				console.warn(
+					`[fetchIssuesChunk] ${args.fullName} page ${currentPage}: skipped ${skipped.length} items due to parse errors`,
+				);
+				for (const item of skipped) {
+					await ctx.runMutation(internal.rpc.bootstrapWrite.deadLetter, {
+						deliveryId: `bootstrap-issue:${args.repositoryId}:page${currentPage}:idx${item.index}`,
+						reason: item.error,
+						payloadJson: item.raw,
+					});
+				}
 			}
-
-			// After Array.isArray narrowing, result is readonly Issue[]
-			const pageItems: ReadonlyArray<typeof Issue.Type> = result;
 
 			// GitHub's issues API includes PRs — filter them out, then transform
 			const issues = pageItems
@@ -420,11 +450,13 @@ export const fetchIssuesChunk = internalAction({
 				});
 			}
 
+			// Total count includes skipped items for pagination purposes
+			const pageTotal = pageItems.length + skipped.length;
 			totalCount += issues.length;
 			pagesProcessed++;
 
 			// If we got a full page, there might be more
-			if (result.length === 100) {
+			if (pageTotal === 100) {
 				currentPage++;
 				nextCursor = String(currentPage);
 			} else {

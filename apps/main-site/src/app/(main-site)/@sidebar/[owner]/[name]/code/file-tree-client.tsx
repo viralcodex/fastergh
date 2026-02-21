@@ -2,13 +2,9 @@
 
 import { Result, useAtomValue } from "@effect-atom/atom-react";
 import { Button } from "@packages/ui/components/button";
-import {
-	ChevronRight,
-	File,
-	Folder,
-	Loader2,
-} from "@packages/ui/components/icons";
+import { ChevronRight, File, Folder } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
+import { Skeleton } from "@packages/ui/components/skeleton";
 import { cn } from "@packages/ui/lib/utils";
 import { useCodeBrowse } from "@packages/ui/rpc/code-browse";
 import { Either, Option, Schema } from "effect";
@@ -320,8 +316,10 @@ export function FileTreeClient({
 
 	if (isInitial || (isLoading && tree === null)) {
 		return (
-			<div className="flex items-center justify-center py-8">
-				<Loader2 className="size-4 animate-spin text-muted-foreground" />
+			<div className="py-1 space-y-px px-2">
+				{[1, 2, 3, 4, 5, 6, 7].map((i) => (
+					<Skeleton key={i} className="h-5 w-full rounded-sm" />
+				))}
 			</div>
 		);
 	}

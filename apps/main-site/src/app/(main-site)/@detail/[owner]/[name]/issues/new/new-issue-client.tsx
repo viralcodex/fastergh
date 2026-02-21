@@ -16,7 +16,6 @@ import {
 	ChevronsUpDown,
 	FileText,
 	Info,
-	Loader2,
 	Plus,
 	Tag,
 	X,
@@ -28,6 +27,7 @@ import {
 	PopoverTrigger,
 } from "@packages/ui/components/popover";
 import { Separator } from "@packages/ui/components/separator";
+import { Skeleton } from "@packages/ui/components/skeleton";
 import {
 	Tabs,
 	TabsContent,
@@ -123,10 +123,15 @@ export function NewIssueClient({
 	// Loading state
 	if (isLoading && effectiveChosenTemplate === null) {
 		return (
-			<div className="flex h-full items-center justify-center">
-				<div className="flex items-center gap-2 text-sm text-muted-foreground">
-					<Loader2 className="size-4 animate-spin" />
-					Loading templates...
+			<div className="h-full overflow-y-auto">
+				<div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+					<Skeleton className="h-6 w-32 mb-1" />
+					<Skeleton className="h-3 w-48 mb-6" />
+					<div className="space-y-2">
+						<Skeleton className="h-16 w-full rounded-lg" />
+						<Skeleton className="h-16 w-full rounded-lg" />
+						<Skeleton className="h-16 w-full rounded-lg" />
+					</div>
 				</div>
 			</div>
 		);

@@ -20,10 +20,10 @@ import {
 	GitPullRequest,
 	Inbox,
 	ListChecks,
-	Loader2,
 	Rocket,
 	Search,
 } from "@packages/ui/components/icons";
+import { Skeleton } from "@packages/ui/components/skeleton";
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useHotkey } from "@tanstack/react-hotkeys";
@@ -473,8 +473,16 @@ function SearchResults({
 
 	if (Result.isInitial(result)) {
 		return (
-			<div className="flex items-center justify-center py-6">
-				<Loader2 className="size-4 animate-spin text-muted-foreground" />
+			<div className="px-2 py-3 space-y-2">
+				{[1, 2, 3].map((i) => (
+					<div key={i} className="flex items-center gap-2 px-2">
+						<Skeleton className="size-4 rounded shrink-0" />
+						<div className="flex-1 space-y-1">
+							<Skeleton className="h-3.5 w-3/4" />
+							<Skeleton className="h-2.5 w-1/2" />
+						</div>
+					</div>
+				))}
 			</div>
 		);
 	}
@@ -538,8 +546,16 @@ function GlobalWorkResults({
 
 	if (Result.isInitial(result)) {
 		return (
-			<div className="flex items-center justify-center py-4">
-				<Loader2 className="size-4 animate-spin text-muted-foreground" />
+			<div className="px-2 py-3 space-y-2">
+				{[1, 2, 3].map((i) => (
+					<div key={i} className="flex items-center gap-2 px-2">
+						<Skeleton className="size-4 rounded shrink-0" />
+						<div className="flex-1 space-y-1">
+							<Skeleton className="h-3.5 w-3/4" />
+							<Skeleton className="h-2.5 w-1/2" />
+						</div>
+					</div>
+				))}
 			</div>
 		);
 	}

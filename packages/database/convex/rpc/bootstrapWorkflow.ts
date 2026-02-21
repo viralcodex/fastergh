@@ -346,11 +346,15 @@ export const onBootstrapComplete = internalMutation({
 		if (!result) return null;
 
 		// Only handle failure/cancellation — success is marked inside the workflow
-		if (result.kind === "error" || result.kind === "canceled") {
+		if (
+			result.kind === "error" ||
+			result.kind === "failed" ||
+			result.kind === "canceled"
+		) {
 			const errorMessage =
-				result.kind === "error"
-					? String(result.error ?? "Unknown workflow error")
-					: "Workflow canceled";
+				result.kind === "canceled"
+					? "Workflow canceled"
+					: String(result.error ?? "Unknown workflow error");
 
 			const job = await ctx.db
 				.query("github_sync_jobs")
