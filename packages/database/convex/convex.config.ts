@@ -3,11 +3,13 @@ import aggregate from "@convex-dev/aggregate/convex.config";
 import migrations from "@convex-dev/migrations/convex.config";
 import rateLimiter from "@convex-dev/rate-limiter/convex.config";
 import workflow from "@convex-dev/workflow/convex.config.js";
+import autumnComponent from "@useautumn/convex/convex.config";
 import { defineApp } from "convex/server";
 import betterAuth from "./betterAuth/convex.config";
 
 const app: ReturnType<typeof defineApp> = defineApp();
 app.use(actionCache);
+app.use(autumnComponent);
 app.use(betterAuth);
 app.use(migrations);
 app.use(rateLimiter);

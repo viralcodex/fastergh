@@ -27,7 +27,8 @@
 		"otel:process:console": "bun scripts/otel-console-span-processor.ts",
 		"test:otel:e2e": "turbo run test --filter='@packages/confect' --filter='@packages/database' --filter='@packages/ui' --filter='@packages/observability'",
 		"test:otel:convex:dev": "bun run test:otel:convex:local",
-		"test:otel:convex:local": "bun scripts/otel-convex-dev-smoke.ts"
+		"test:otel:convex:local": "bun scripts/otel-convex-dev-smoke.ts",
+		"check:github": "bun scripts/check-github-config.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.1.4",

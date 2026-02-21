@@ -7,11 +7,31 @@ import { convex } from "@convex-dev/better-auth/plugins";
 import { type BetterAuthOptions, betterAuth } from "better-auth/minimal";
 import { genericOAuth } from "better-auth/plugins";
 import { type GenericDataModel, queryGeneric } from "convex/server";
+import { Either, Schema } from "effect";
 import { components, internal } from "./_generated/api";
 import authConfig from "./auth.config";
 import authSchema from "./betterAuth/schema";
 
 const authFunctions: AuthFunctions = internal.auth;
+
+const GitHubUserSchema = Schema.Struct({
+	id: Schema.Number,
+	login: Schema.String,
+	name: Schema.NullOr(Schema.String),
+	avatar_url: Schema.String,
+	email: Schema.NullOr(Schema.String),
+});
+
+const GitHubEmailSchema = Schema.Struct({
+	email: Schema.String,
+	primary: Schema.Boolean,
+	verified: Schema.Boolean,
+});
+
+const decodeGitHubUser = Schema.decodeUnknownEither(GitHubUserSchema);
+const decodeGitHubEmails = Schema.decodeUnknownEither(
+	Schema.Array(GitHubEmailSchema),
+);
 
 // ---------------------------------------------------------------------------
 // Better Auth component client (local install mode)
@@ -103,18 +123,13 @@ export const createAuthOptions = (ctx: GenericCtx) => {
 									},
 								}),
 							]);
-							const user = (await userRes.json()) as {
-								id: number;
-								login: string;
-								name: string | null;
-								avatar_url: string;
-								email: string | null;
-							};
-							const emails = (await emailsRes.json()) as Array<{
-								email: string;
-								primary: boolean;
-								verified: boolean;
-							}>;
+							const userResult = decodeGitHubUser(await userRes.json());
+							if (Either.isLeft(userResult)) return null;
+							const user = userResult.right;
+
+							const emailsResult = decodeGitHubEmails(await emailsRes.json());
+							if (Either.isLeft(emailsResult)) return null;
+							const emails = emailsResult.right;
 							const primaryEmail =
 								emails.find((e) => e.primary && e.verified)?.email ??
 								emails.find((e) => e.verified)?.email ??
