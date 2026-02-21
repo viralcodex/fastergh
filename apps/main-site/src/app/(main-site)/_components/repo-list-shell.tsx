@@ -70,7 +70,7 @@ export async function RepoListShell({
 						<span>CI</span>
 					</Link>
 					<Link
-						href={`/${owner}/${name}/code`}
+						href={`/${owner}/${name}/tree/HEAD`}
 						className={cn(
 							"flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold border-b-2 -mb-px transition-colors no-underline",
 							activeTab === "code"

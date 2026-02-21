@@ -1,4 +1,4 @@
 // Route stub — the hub layout handles rendering.
-export default function CodePage() {
+export default function TreePage() {
 	return null;
 }

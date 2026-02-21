@@ -15,8 +15,8 @@ import {
 	prsByRepo,
 	reviewsByPrNumber,
 } from "../shared/aggregates";
-import { resolveRepoAccess } from "../shared/permissions";
 import { DatabaseRpcModuleMiddlewares } from "./moduleMiddlewares";
+import { RepoPermissionContext, RepoPullByNameMiddleware } from "./security";
 
 const factory = createRpcFactory({ schema: confectSchema });
 
@@ -47,141 +47,151 @@ const listReposDef = factory.query({
 /**
  * Get a single repo overview by owner/name.
  */
-const getRepoOverviewDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-	},
-	success: Schema.NullOr(
-		Schema.Struct({
-			repositoryId: Schema.Number,
-			fullName: Schema.String,
+const getRepoOverviewDef = factory
+	.query({
+		payload: {
 			ownerLogin: Schema.String,
 			name: Schema.String,
-			openPrCount: Schema.Number,
-			openIssueCount: Schema.Number,
-			failingCheckCount: Schema.Number,
-			lastPushAt: Schema.NullOr(Schema.Number),
-			updatedAt: Schema.Number,
-		}),
-	),
-});
+		},
+		success: Schema.NullOr(
+			Schema.Struct({
+				repositoryId: Schema.Number,
+				fullName: Schema.String,
+				ownerLogin: Schema.String,
+				name: Schema.String,
+				openPrCount: Schema.Number,
+				openIssueCount: Schema.Number,
+				failingCheckCount: Schema.Number,
+				lastPushAt: Schema.NullOr(Schema.Number),
+				updatedAt: Schema.Number,
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Get pull request list for a repository.
  */
-const listPullRequestsDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		state: Schema.optional(Schema.Literal("open", "closed")),
-	},
-	success: Schema.Array(
-		Schema.Struct({
-			number: Schema.Number,
-			state: Schema.Literal("open", "closed"),
-			optimisticState: Schema.NullOr(
-				Schema.Literal("pending", "failed", "confirmed"),
-			),
-			optimisticErrorMessage: Schema.NullOr(Schema.String),
-			draft: Schema.Boolean,
-			title: Schema.String,
-			authorLogin: Schema.NullOr(Schema.String),
-			authorAvatarUrl: Schema.NullOr(Schema.String),
-			headRefName: Schema.String,
-			baseRefName: Schema.String,
-			commentCount: Schema.Number,
-			reviewCount: Schema.Number,
-			lastCheckConclusion: Schema.NullOr(Schema.String),
-			githubUpdatedAt: Schema.Number,
-		}),
-	),
-});
+const listPullRequestsDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			state: Schema.optional(Schema.Literal("open", "closed")),
+		},
+		success: Schema.Array(
+			Schema.Struct({
+				number: Schema.Number,
+				state: Schema.Literal("open", "closed"),
+				optimisticState: Schema.NullOr(
+					Schema.Literal("pending", "failed", "confirmed"),
+				),
+				optimisticErrorMessage: Schema.NullOr(Schema.String),
+				draft: Schema.Boolean,
+				title: Schema.String,
+				authorLogin: Schema.NullOr(Schema.String),
+				authorAvatarUrl: Schema.NullOr(Schema.String),
+				headRefName: Schema.String,
+				baseRefName: Schema.String,
+				commentCount: Schema.Number,
+				reviewCount: Schema.Number,
+				lastCheckConclusion: Schema.NullOr(Schema.String),
+				githubUpdatedAt: Schema.Number,
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Get issue list for a repository.
  */
-const listIssuesDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		state: Schema.optional(Schema.Literal("open", "closed")),
-	},
-	success: Schema.Array(
-		Schema.Struct({
-			number: Schema.Number,
-			state: Schema.Literal("open", "closed"),
-			optimisticState: Schema.NullOr(
-				Schema.Literal("pending", "failed", "confirmed"),
-			),
-			optimisticErrorMessage: Schema.NullOr(Schema.String),
-			title: Schema.String,
-			authorLogin: Schema.NullOr(Schema.String),
-			authorAvatarUrl: Schema.NullOr(Schema.String),
-			labelNames: Schema.Array(Schema.String),
-			commentCount: Schema.Number,
-			githubUpdatedAt: Schema.Number,
-		}),
-	),
-});
+const listIssuesDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			state: Schema.optional(Schema.Literal("open", "closed")),
+		},
+		success: Schema.Array(
+			Schema.Struct({
+				number: Schema.Number,
+				state: Schema.Literal("open", "closed"),
+				optimisticState: Schema.NullOr(
+					Schema.Literal("pending", "failed", "confirmed"),
+				),
+				optimisticErrorMessage: Schema.NullOr(Schema.String),
+				title: Schema.String,
+				authorLogin: Schema.NullOr(Schema.String),
+				authorAvatarUrl: Schema.NullOr(Schema.String),
+				labelNames: Schema.Array(Schema.String),
+				commentCount: Schema.Number,
+				githubUpdatedAt: Schema.Number,
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Get activity feed for a repository.
  */
-const listActivityDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		limit: Schema.optional(Schema.Number),
-	},
-	success: Schema.Array(
-		Schema.Struct({
-			activityType: Schema.String,
-			title: Schema.String,
-			description: Schema.NullOr(Schema.String),
-			actorLogin: Schema.NullOr(Schema.String),
-			actorAvatarUrl: Schema.NullOr(Schema.String),
-			entityNumber: Schema.NullOr(Schema.Number),
-			createdAt: Schema.Number,
-		}),
-	),
-});
+const listActivityDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			limit: Schema.optional(Schema.Number),
+		},
+		success: Schema.Array(
+			Schema.Struct({
+				activityType: Schema.String,
+				title: Schema.String,
+				description: Schema.NullOr(Schema.String),
+				actorLogin: Schema.NullOr(Schema.String),
+				actorAvatarUrl: Schema.NullOr(Schema.String),
+				entityNumber: Schema.NullOr(Schema.Number),
+				createdAt: Schema.Number,
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Get files changed in a pull request (for diff view).
  * Returns files for the given PR, optionally filtered by headSha.
  * If no headSha is given, returns the most recently cached set.
  */
-const listPrFilesDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		number: Schema.Number,
-		headSha: Schema.optional(Schema.String),
-	},
-	success: Schema.Struct({
-		headSha: Schema.NullOr(Schema.String),
-		files: Schema.Array(
-			Schema.Struct({
-				filename: Schema.String,
-				status: Schema.Literal(
-					"added",
-					"removed",
-					"modified",
-					"renamed",
-					"copied",
-					"changed",
-					"unchanged",
-				),
-				additions: Schema.Number,
-				deletions: Schema.Number,
-				changes: Schema.Number,
-				patch: Schema.NullOr(Schema.String),
-				previousFilename: Schema.NullOr(Schema.String),
-			}),
-		),
-	}),
-});
+const listPrFilesDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			number: Schema.Number,
+			headSha: Schema.optional(Schema.String),
+		},
+		success: Schema.Struct({
+			headSha: Schema.NullOr(Schema.String),
+			files: Schema.Array(
+				Schema.Struct({
+					filename: Schema.String,
+					status: Schema.Literal(
+						"added",
+						"removed",
+						"modified",
+						"renamed",
+						"copied",
+						"changed",
+						"unchanged",
+					),
+					additions: Schema.Number,
+					deletions: Schema.Number,
+					changes: Schema.Number,
+					patch: Schema.NullOr(Schema.String),
+					previousFilename: Schema.NullOr(Schema.String),
+				}),
+			),
+		}),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Request on-demand PR file sync.
@@ -193,16 +203,18 @@ const listPrFilesDef = factory.query({
  * Idempotent: if files already exist for the PR's current headSha,
  * no sync is scheduled.
  */
-const requestPrFileSyncDef = factory.mutation({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		number: Schema.Number,
-	},
-	success: Schema.Struct({
-		scheduled: Schema.Boolean,
-	}),
-});
+const requestPrFileSyncDef = factory
+	.mutation({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			number: Schema.Number,
+		},
+		success: Schema.Struct({
+			scheduled: Schema.Boolean,
+		}),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 // ---------------------------------------------------------------------------
 // Paginated list endpoint definitions
@@ -255,68 +267,76 @@ const ActivityListItem = Schema.Struct({
 /**
  * Paginated pull request list with optional state filter.
  */
-const listPullRequestsPaginatedDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		state: Schema.optional(Schema.Literal("open", "closed")),
-		...PaginationOptionsSchema.fields,
-	},
-	success: PaginationResultSchema(PrListItem),
-});
+const listPullRequestsPaginatedDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			state: Schema.optional(Schema.Literal("open", "closed")),
+			...PaginationOptionsSchema.fields,
+		},
+		success: PaginationResultSchema(PrListItem),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Paginated issue list with optional state filter.
  */
-const listIssuesPaginatedDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		state: Schema.optional(Schema.Literal("open", "closed")),
-		...PaginationOptionsSchema.fields,
-	},
-	success: PaginationResultSchema(IssueListItem),
-});
+const listIssuesPaginatedDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			state: Schema.optional(Schema.Literal("open", "closed")),
+			...PaginationOptionsSchema.fields,
+		},
+		success: PaginationResultSchema(IssueListItem),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Paginated activity feed.
  */
-const listActivityPaginatedDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		...PaginationOptionsSchema.fields,
-	},
-	success: PaginationResultSchema(ActivityListItem),
-});
+const listActivityPaginatedDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			...PaginationOptionsSchema.fields,
+		},
+		success: PaginationResultSchema(ActivityListItem),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Get workflow run list for a repository.
  */
-const listWorkflowRunsDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-	},
-	success: Schema.Array(
-		Schema.Struct({
-			githubRunId: Schema.Number,
-			workflowName: Schema.NullOr(Schema.String),
-			runNumber: Schema.Number,
-			event: Schema.String,
-			status: Schema.NullOr(Schema.String),
-			conclusion: Schema.NullOr(Schema.String),
-			headBranch: Schema.NullOr(Schema.String),
-			headSha: Schema.String,
-			actorLogin: Schema.NullOr(Schema.String),
-			actorAvatarUrl: Schema.NullOr(Schema.String),
-			jobCount: Schema.Number,
-			htmlUrl: Schema.NullOr(Schema.String),
-			createdAt: Schema.Number,
-			updatedAt: Schema.Number,
-		}),
-	),
-});
+const listWorkflowRunsDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+		},
+		success: Schema.Array(
+			Schema.Struct({
+				githubRunId: Schema.Number,
+				workflowName: Schema.NullOr(Schema.String),
+				runNumber: Schema.Number,
+				event: Schema.String,
+				status: Schema.NullOr(Schema.String),
+				conclusion: Schema.NullOr(Schema.String),
+				headBranch: Schema.NullOr(Schema.String),
+				headSha: Schema.String,
+				actorLogin: Schema.NullOr(Schema.String),
+				actorAvatarUrl: Schema.NullOr(Schema.String),
+				jobCount: Schema.Number,
+				htmlUrl: Schema.NullOr(Schema.String),
+				createdAt: Schema.Number,
+				updatedAt: Schema.Number,
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 const WorkflowRunListItem = Schema.Struct({
 	githubRunId: Schema.Number,
@@ -338,42 +358,46 @@ const WorkflowRunListItem = Schema.Struct({
 /**
  * Paginated workflow run list.
  */
-const listWorkflowRunsPaginatedDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		...PaginationOptionsSchema.fields,
-	},
-	success: PaginationResultSchema(WorkflowRunListItem),
-});
+const listWorkflowRunsPaginatedDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			...PaginationOptionsSchema.fields,
+		},
+		success: PaginationResultSchema(WorkflowRunListItem),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Search issues and PRs by title within a repository.
  */
-const searchIssuesAndPrsDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		query: Schema.String,
-		limit: Schema.optional(Schema.Number),
-		target: Schema.optional(Schema.Literal("issue", "pr")),
-		authorLogin: Schema.optional(Schema.String),
-		assigneeLogin: Schema.optional(Schema.String),
-		labels: Schema.optional(Schema.Array(Schema.String)),
-		state: Schema.optional(Schema.Literal("open", "closed", "merged")),
-		updatedAfter: Schema.optional(Schema.Number),
-	},
-	success: Schema.Array(
-		Schema.Struct({
-			type: Schema.Literal("pr", "issue"),
-			number: Schema.Number,
-			state: Schema.Literal("open", "closed", "merged"),
-			title: Schema.String,
-			authorLogin: Schema.NullOr(Schema.String),
-			githubUpdatedAt: Schema.Number,
-		}),
-	),
-});
+const searchIssuesAndPrsDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+			query: Schema.String,
+			limit: Schema.optional(Schema.Number),
+			target: Schema.optional(Schema.Literal("issue", "pr")),
+			authorLogin: Schema.optional(Schema.String),
+			assigneeLogin: Schema.optional(Schema.String),
+			labels: Schema.optional(Schema.Array(Schema.String)),
+			state: Schema.optional(Schema.Literal("open", "closed", "merged")),
+			updatedAfter: Schema.optional(Schema.Number),
+		},
+		success: Schema.Array(
+			Schema.Struct({
+				type: Schema.Literal("pr", "issue"),
+				number: Schema.Number,
+				state: Schema.Literal("open", "closed", "merged"),
+				title: Schema.String,
+				authorLogin: Schema.NullOr(Schema.String),
+				githubUpdatedAt: Schema.Number,
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 const WorkflowJobSchema = Schema.Struct({
 	githubJobId: Schema.Number,
@@ -389,34 +413,36 @@ const WorkflowJobSchema = Schema.Struct({
 /**
  * Get full workflow run detail including jobs.
  */
-const getWorkflowRunDetailDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		runNumber: Schema.Number,
-	},
-	success: Schema.NullOr(
-		Schema.Struct({
-			repositoryId: Schema.Number,
-			githubRunId: Schema.Number,
-			workflowId: Schema.Number,
-			workflowName: Schema.NullOr(Schema.String),
+const getWorkflowRunDetailDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
 			runNumber: Schema.Number,
-			runAttempt: Schema.Number,
-			event: Schema.String,
-			status: Schema.NullOr(Schema.String),
-			conclusion: Schema.NullOr(Schema.String),
-			headBranch: Schema.NullOr(Schema.String),
-			headSha: Schema.String,
-			actorLogin: Schema.NullOr(Schema.String),
-			actorAvatarUrl: Schema.NullOr(Schema.String),
-			htmlUrl: Schema.NullOr(Schema.String),
-			createdAt: Schema.Number,
-			updatedAt: Schema.Number,
-			jobs: Schema.Array(WorkflowJobSchema),
-		}),
-	),
-});
+		},
+		success: Schema.NullOr(
+			Schema.Struct({
+				repositoryId: Schema.Number,
+				githubRunId: Schema.Number,
+				workflowId: Schema.Number,
+				workflowName: Schema.NullOr(Schema.String),
+				runNumber: Schema.Number,
+				runAttempt: Schema.Number,
+				event: Schema.String,
+				status: Schema.NullOr(Schema.String),
+				conclusion: Schema.NullOr(Schema.String),
+				headBranch: Schema.NullOr(Schema.String),
+				headSha: Schema.String,
+				actorLogin: Schema.NullOr(Schema.String),
+				actorAvatarUrl: Schema.NullOr(Schema.String),
+				htmlUrl: Schema.NullOr(Schema.String),
+				createdAt: Schema.Number,
+				updatedAt: Schema.Number,
+				jobs: Schema.Array(WorkflowJobSchema),
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 // -- Shared sub-schemas for detail views ------------------------------------
 
@@ -476,93 +502,97 @@ const AssigneeSchema = Schema.Struct({
 	avatarUrl: Schema.NullOr(Schema.String),
 });
 
-const getIssueDetailDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		number: Schema.Number,
-	},
-	success: Schema.NullOr(
-		Schema.Struct({
-			repositoryId: Schema.Number,
+const getIssueDetailDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
 			number: Schema.Number,
-			state: Schema.Literal("open", "closed"),
-			optimisticOperationType: Schema.NullOr(
-				Schema.Literal(
-					"create_issue",
-					"create_comment",
-					"update_issue_state",
-					"merge_pull_request",
-					"update_labels",
-					"update_assignees",
+		},
+		success: Schema.NullOr(
+			Schema.Struct({
+				repositoryId: Schema.Number,
+				number: Schema.Number,
+				state: Schema.Literal("open", "closed"),
+				optimisticOperationType: Schema.NullOr(
+					Schema.Literal(
+						"create_issue",
+						"create_comment",
+						"update_issue_state",
+						"merge_pull_request",
+						"update_labels",
+						"update_assignees",
+					),
 				),
-			),
-			optimisticState: Schema.NullOr(
-				Schema.Literal("pending", "failed", "confirmed"),
-			),
-			optimisticErrorMessage: Schema.NullOr(Schema.String),
-			title: Schema.String,
-			body: Schema.NullOr(Schema.String),
-			authorLogin: Schema.NullOr(Schema.String),
-			authorAvatarUrl: Schema.NullOr(Schema.String),
-			assignees: Schema.Array(AssigneeSchema),
-			labelNames: Schema.Array(Schema.String),
-			commentCount: Schema.Number,
-			closedAt: Schema.NullOr(Schema.Number),
-			githubUpdatedAt: Schema.Number,
-			comments: Schema.Array(CommentSchema),
-		}),
-	),
-});
+				optimisticState: Schema.NullOr(
+					Schema.Literal("pending", "failed", "confirmed"),
+				),
+				optimisticErrorMessage: Schema.NullOr(Schema.String),
+				title: Schema.String,
+				body: Schema.NullOr(Schema.String),
+				authorLogin: Schema.NullOr(Schema.String),
+				authorAvatarUrl: Schema.NullOr(Schema.String),
+				assignees: Schema.Array(AssigneeSchema),
+				labelNames: Schema.Array(Schema.String),
+				commentCount: Schema.Number,
+				closedAt: Schema.NullOr(Schema.Number),
+				githubUpdatedAt: Schema.Number,
+				comments: Schema.Array(CommentSchema),
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Get full pull request detail including body, comments, reviews, and check runs.
  */
-const getPullRequestDetailDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-		number: Schema.Number,
-	},
-	success: Schema.NullOr(
-		Schema.Struct({
-			repositoryId: Schema.Number,
+const getPullRequestDetailDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
 			number: Schema.Number,
-			state: Schema.Literal("open", "closed"),
-			optimisticOperationType: Schema.NullOr(
-				Schema.Literal(
-					"update_issue_state",
-					"merge_pull_request",
-					"update_pull_request_branch",
-					"update_labels",
-					"update_assignees",
+		},
+		success: Schema.NullOr(
+			Schema.Struct({
+				repositoryId: Schema.Number,
+				number: Schema.Number,
+				state: Schema.Literal("open", "closed"),
+				optimisticOperationType: Schema.NullOr(
+					Schema.Literal(
+						"update_issue_state",
+						"merge_pull_request",
+						"update_pull_request_branch",
+						"update_labels",
+						"update_assignees",
+					),
 				),
-			),
-			optimisticState: Schema.NullOr(
-				Schema.Literal("pending", "failed", "confirmed"),
-			),
-			optimisticErrorMessage: Schema.NullOr(Schema.String),
-			draft: Schema.Boolean,
-			title: Schema.String,
-			body: Schema.NullOr(Schema.String),
-			authorLogin: Schema.NullOr(Schema.String),
-			authorAvatarUrl: Schema.NullOr(Schema.String),
-			assignees: Schema.Array(AssigneeSchema),
-			labelNames: Schema.Array(Schema.String),
-			headRefName: Schema.String,
-			baseRefName: Schema.String,
-			headSha: Schema.String,
-			mergeableState: Schema.NullOr(Schema.String),
-			mergedAt: Schema.NullOr(Schema.Number),
-			closedAt: Schema.NullOr(Schema.Number),
-			githubUpdatedAt: Schema.Number,
-			comments: Schema.Array(CommentSchema),
-			reviews: Schema.Array(ReviewSchema),
-			reviewComments: Schema.Array(ReviewCommentSchema),
-			checkRuns: Schema.Array(CheckRunSchema),
-		}),
-	),
-});
+				optimisticState: Schema.NullOr(
+					Schema.Literal("pending", "failed", "confirmed"),
+				),
+				optimisticErrorMessage: Schema.NullOr(Schema.String),
+				draft: Schema.Boolean,
+				title: Schema.String,
+				body: Schema.NullOr(Schema.String),
+				authorLogin: Schema.NullOr(Schema.String),
+				authorAvatarUrl: Schema.NullOr(Schema.String),
+				assignees: Schema.Array(AssigneeSchema),
+				labelNames: Schema.Array(Schema.String),
+				headRefName: Schema.String,
+				baseRefName: Schema.String,
+				headSha: Schema.String,
+				mergeableState: Schema.NullOr(Schema.String),
+				mergedAt: Schema.NullOr(Schema.Number),
+				closedAt: Schema.NullOr(Schema.Number),
+				githubUpdatedAt: Schema.Number,
+				comments: Schema.Array(CommentSchema),
+				reviews: Schema.Array(ReviewSchema),
+				reviewComments: Schema.Array(ReviewCommentSchema),
+				checkRuns: Schema.Array(CheckRunSchema),
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 /**
  * Get bootstrap sync progress for a repository.
@@ -571,23 +601,25 @@ const getPullRequestDetailDef = factory.query({
  *
  * Returns null if no sync job exists (repo was never synced).
  */
-const getSyncProgressDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-	},
-	success: Schema.NullOr(
-		Schema.Struct({
-			state: Schema.Literal("pending", "running", "retry", "done", "failed"),
-			currentStep: Schema.NullOr(Schema.String),
-			completedSteps: Schema.Array(Schema.String),
-			itemsFetched: Schema.Number,
-			lastError: Schema.NullOr(Schema.String),
-			startedAt: Schema.Number,
-			updatedAt: Schema.Number,
-		}),
-	),
-});
+const getSyncProgressDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+		},
+		success: Schema.NullOr(
+			Schema.Struct({
+				state: Schema.Literal("pending", "running", "retry", "done", "failed"),
+				currentStep: Schema.NullOr(Schema.String),
+				completedSteps: Schema.Array(Schema.String),
+				itemsFetched: Schema.Number,
+				lastError: Schema.NullOr(Schema.String),
+				startedAt: Schema.Number,
+				updatedAt: Schema.Number,
+			}),
+		),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 // ---------------------------------------------------------------------------
 // Home dashboard — cross-repo aggregate
@@ -1059,27 +1091,21 @@ listReposDef.implement(() =>
 	}),
 );
 
-getRepoOverviewDef.implement((args) =>
+getRepoOverviewDef.implement((_args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
+		const permissionContext = yield* RepoPermissionContext;
 
-		// Look up repo by owner/name
 		const repoOpt = yield* ctx.db
 			.query("github_repositories")
-			.withIndex("by_ownerLogin_and_name", (q) =>
-				q.eq("ownerLogin", args.ownerLogin).eq("name", args.name),
+			.withIndex("by_githubRepoId", (q) =>
+				q.eq("githubRepoId", permissionContext.repositoryId),
 			)
 			.first();
 
 		if (Option.isNone(repoOpt)) return null;
 
 		const repo = repoOpt.value;
-		const access = yield* resolveRepoAccess(
-			repo.githubRepoId,
-			repo.private,
-		).pipe(Effect.either);
-		if (access._tag === "Left") return null;
-
 		const counts = yield* computeRepoCounts(repo.githubRepoId);
 
 		return {
@@ -1096,29 +1122,15 @@ getRepoOverviewDef.implement((args) =>
 	}),
 );
 
-getSyncProgressDef.implement((args) =>
+getSyncProgressDef.implement((_args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
 		const raw = ctx.rawCtx;
+		const permissionContext = yield* RepoPermissionContext;
 
-		// Look up the repo to get its githubRepoId
-		const repo = yield* ctx.db
-			.query("github_repositories")
-			.withIndex("by_ownerLogin_and_name", (q) =>
-				q.eq("ownerLogin", args.ownerLogin).eq("name", args.name),
-			)
-			.first();
-
-		if (Option.isNone(repo)) return null;
-
-		const access = yield* resolveRepoAccess(
-			repo.value.githubRepoId,
-			repo.value.private,
-		).pipe(Effect.either);
-		if (access._tag === "Left") return null;
-
-		const repositoryId = repo.value.githubRepoId;
-		const installationId = repo.value.installationId;
+		const repositoryId = permissionContext.repositoryId;
+		const installationId = permissionContext.installationId;
+		if (installationId <= 0) return null;
 
 		// Find the bootstrap sync job for this repository
 		const lockKey = `repo-bootstrap:${installationId}:${repositoryId}`;
@@ -1285,7 +1297,6 @@ const enrichPr = (pr: {
 listPullRequestsDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return [];
 
 		const ctx = yield* ConfectQueryCtx;
 
@@ -1348,7 +1359,6 @@ const enrichIssue = (issue: {
 listIssuesDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return [];
 
 		const ctx = yield* ConfectQueryCtx;
 
@@ -1380,23 +1390,8 @@ listIssuesDef.implement((args) =>
 listActivityDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
-
-		const repo = yield* ctx.db
-			.query("github_repositories")
-			.withIndex("by_ownerLogin_and_name", (q) =>
-				q.eq("ownerLogin", args.ownerLogin).eq("name", args.name),
-			)
-			.first();
-
-		if (Option.isNone(repo)) return [];
-
-		const access = yield* resolveRepoAccess(
-			repo.value.githubRepoId,
-			repo.value.private,
-		).pipe(Effect.either);
-		if (access._tag === "Left") return [];
-
-		const repositoryId = repo.value.githubRepoId;
+		const permissionContext = yield* RepoPermissionContext;
+		const repositoryId = permissionContext.repositoryId;
 		const limit = args.limit ?? 50;
 		const activities = yield* ctx.db
 			.query("view_activity_feed")
@@ -1423,7 +1418,6 @@ listActivityDef.implement((args) =>
 searchIssuesAndPrsDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return [];
 
 		const ctx = yield* ConfectQueryCtx;
 		const maxResults = args.limit ?? 20;
@@ -2432,30 +2426,15 @@ const hasPullPermission = (permission: {
 
 // -- Helper: find repo by owner/name and return repositoryId ----------------
 
-const findRepo = (ownerLogin: string, name: string) =>
+const findRepo = (_ownerLogin: string, _name: string) =>
 	Effect.gen(function* () {
-		const ctx = yield* ConfectQueryCtx;
-		const repo = yield* ctx.db
-			.query("github_repositories")
-			.withIndex("by_ownerLogin_and_name", (q) =>
-				q.eq("ownerLogin", ownerLogin).eq("name", name),
-			)
-			.first();
-		if (Option.isNone(repo)) return null;
-
-		const access = yield* resolveRepoAccess(
-			repo.value.githubRepoId,
-			repo.value.private,
-		).pipe(Effect.either);
-		if (access._tag === "Left") return null;
-
-		return repo.value.githubRepoId;
+		const permissionContext = yield* RepoPermissionContext;
+		return permissionContext.repositoryId;
 	});
 
 getIssueDetailDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return null;
 
 		const ctx = yield* ConfectQueryCtx;
 
@@ -2539,7 +2518,6 @@ getIssueDetailDef.implement((args) =>
 getPullRequestDetailDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return null;
 
 		const ctx = yield* ConfectQueryCtx;
 
@@ -2754,7 +2732,6 @@ getPullRequestDetailDef.implement((args) =>
 listPrFilesDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return { headSha: null, files: [] };
 
 		const ctx = yield* ConfectQueryCtx;
 
@@ -2829,36 +2806,11 @@ listPrFilesDef.implement((args) =>
 requestPrFileSyncDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectMutationCtx;
+		const permissionContext = yield* RepoPermissionContext;
+		const repositoryId = permissionContext.repositoryId;
 
-		// 1. Find the repo
-		const repo = yield* ctx.db
-			.query("github_repositories")
-			.withIndex("by_ownerLogin_and_name", (q) =>
-				q.eq("ownerLogin", args.ownerLogin).eq("name", args.name),
-			)
-			.first();
-
-		if (Option.isNone(repo)) return { scheduled: false };
-
-		const repositoryId = repo.value.githubRepoId;
-		const identity = yield* ctx.auth.getUserIdentity();
-
-		if (repo.value.private) {
-			if (Option.isNone(identity)) return { scheduled: false };
-
-			const permission = yield* ctx.db
-				.query("github_user_repo_permissions")
-				.withIndex("by_userId_and_repositoryId", (q) =>
-					q
-						.eq("userId", identity.value.subject)
-						.eq("repositoryId", repositoryId),
-				)
-				.first();
-
-			if (Option.isNone(permission) || !hasPullPermission(permission.value)) {
-				return { scheduled: false };
-			}
-		}
+		const installationId = permissionContext.installationId;
+		if (installationId <= 0) return { scheduled: false };
 
 		// 2. Find the PR to get its headSha
 		const prOpt = yield* ctx.db
@@ -2887,10 +2839,6 @@ requestPrFileSyncDef.implement((args) =>
 		if (Option.isSome(existingFile)) return { scheduled: false };
 
 		// 4. No files cached — schedule a background sync
-		const installationId = repo.value.installationId;
-
-		if (installationId <= 0) return { scheduled: false };
-
 		yield* Effect.promise(() =>
 			ctx.scheduler.runAfter(0, internal.rpc.githubActions.syncPrFiles, {
 				ownerLogin: args.ownerLogin,
@@ -2913,13 +2861,6 @@ requestPrFileSyncDef.implement((args) =>
 listPullRequestsPaginatedDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) {
-			return {
-				page: [],
-				isDone: true,
-				continueCursor: Cursor.make(""),
-			};
-		}
 
 		const ctx = yield* ConfectQueryCtx;
 		const paginationOpts = {
@@ -2960,13 +2901,6 @@ listPullRequestsPaginatedDef.implement((args) =>
 listIssuesPaginatedDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) {
-			return {
-				page: [],
-				isDone: true,
-				continueCursor: Cursor.make(""),
-			};
-		}
 
 		const ctx = yield* ConfectQueryCtx;
 		const paginationOpts = {
@@ -3007,13 +2941,6 @@ listIssuesPaginatedDef.implement((args) =>
 listActivityPaginatedDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) {
-			return {
-				page: [],
-				isDone: true,
-				continueCursor: Cursor.make(""),
-			};
-		}
 
 		const ctx = yield* ConfectQueryCtx;
 		const paginationOpts = {
@@ -3110,7 +3037,6 @@ const enrichWorkflowRun = (run: {
 listWorkflowRunsDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return [];
 
 		const ctx = yield* ConfectQueryCtx;
 
@@ -3131,13 +3057,6 @@ listWorkflowRunsDef.implement((args) =>
 listWorkflowRunsPaginatedDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) {
-			return {
-				page: [],
-				isDone: true,
-				continueCursor: Cursor.make(""),
-			};
-		}
 
 		const ctx = yield* ConfectQueryCtx;
 		const paginationOpts = {
@@ -3168,7 +3087,6 @@ listWorkflowRunsPaginatedDef.implement((args) =>
 getWorkflowRunDetailDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return null;
 
 		const ctx = yield* ConfectQueryCtx;
 
@@ -3228,18 +3146,19 @@ getWorkflowRunDetailDef.implement((args) =>
 // List distinct labels for a repository (aggregated from issues + PRs)
 // ---------------------------------------------------------------------------
 
-const listRepoLabelsDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-	},
-	success: Schema.Array(Schema.String),
-});
+const listRepoLabelsDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+		},
+		success: Schema.Array(Schema.String),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 listRepoLabelsDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return [];
 
 		const ctx = yield* ConfectQueryCtx;
 		const labelSet = new Set<string>();
@@ -3287,18 +3206,19 @@ const RepoCollaboratorSchema = Schema.Struct({
 	avatarUrl: Schema.NullOr(Schema.String),
 });
 
-const listRepoAssigneesDef = factory.query({
-	payload: {
-		ownerLogin: Schema.String,
-		name: Schema.String,
-	},
-	success: Schema.Array(RepoCollaboratorSchema),
-});
+const listRepoAssigneesDef = factory
+	.query({
+		payload: {
+			ownerLogin: Schema.String,
+			name: Schema.String,
+		},
+		success: Schema.Array(RepoCollaboratorSchema),
+	})
+	.middleware(RepoPullByNameMiddleware);
 
 listRepoAssigneesDef.implement((args) =>
 	Effect.gen(function* () {
 		const repositoryId = yield* findRepo(args.ownerLogin, args.name);
-		if (repositoryId === null) return [];
 
 		const ctx = yield* ConfectQueryCtx;
 

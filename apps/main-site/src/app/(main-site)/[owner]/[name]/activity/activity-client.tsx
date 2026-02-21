@@ -159,7 +159,7 @@ function getActivityLink(
 ): string | null {
 	if (entityNumber === null) return null;
 	if (activityType.startsWith("pr.") || activityType.startsWith("pr_review.")) {
-		return `/${owner}/${name}/pulls/${entityNumber}`;
+		return `/${owner}/${name}/pull/${entityNumber}`;
 	}
 	if (activityType.startsWith("issue.")) {
 		return `/${owner}/${name}/issues/${entityNumber}`;

@@ -12,7 +12,7 @@ import { Link } from "@packages/ui/components/link";
 import { cn } from "@packages/ui/lib/utils";
 import { useCodeBrowse } from "@packages/ui/rpc/code-browse";
 import { Either, Option, Schema } from "effect";
-import { parseAsString, useQueryState } from "nuqs";
+import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 import { extractErrorTag } from "@/lib/rpc-error";
 
@@ -197,10 +197,14 @@ function TreeNodeItem({
 
 	const isActive = activePath === node.path;
 	const fileClass = node.read ? "text-muted-foreground/50" : "text-foreground";
+	const encodedPath = node.path
+		.split("/")
+		.map((segment) => encodeURIComponent(segment))
+		.join("/");
 
 	return (
 		<Link
-			href={`/${owner}/${name}/code?path=${encodeURIComponent(node.path)}&treeSha=${encodeURIComponent(treeSha)}`}
+			href={`/${owner}/${name}/blob/${encodeURIComponent(treeSha)}/${encodedPath}`}
 			className={cn(
 				"flex w-full items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] transition-colors no-underline",
 				isActive
@@ -225,18 +229,50 @@ export function FileTreeClient({
 	owner: string;
 	name: string;
 }) {
+	const pathname = usePathname();
+	const routeRef = useMemo(() => {
+		const segments = pathname.split("/").filter(Boolean);
+		const segment = segments[2];
+		if (
+			(segment !== "tree" && segment !== "blob") ||
+			segments[3] === undefined
+		) {
+			return "HEAD";
+		}
+
+		try {
+			return decodeURIComponent(segments[3]);
+		} catch {
+			return "HEAD";
+		}
+	}, [pathname]);
 	const client = useCodeBrowse();
 	const treeAtom = useMemo(
 		() =>
 			client.getFileTree.callAsQuery({
 				ownerLogin: owner,
 				name,
-				sha: "HEAD",
+				sha: routeRef,
 			}),
-		[client, owner, name],
+		[client, owner, name, routeRef],
 	);
 	const treeResult = useAtomValue(treeAtom);
-	const [activePath] = useQueryState("path", parseAsString);
+	const activePath = useMemo(() => {
+		const segments = pathname.split("/").filter(Boolean);
+		if (segments[2] !== "blob") return null;
+		if (segments.length < 5) return null;
+
+		const encodedPathSegments = segments.slice(4);
+		if (encodedPathSegments.length === 0) return null;
+
+		try {
+			return encodedPathSegments
+				.map((segment) => decodeURIComponent(segment))
+				.join("/");
+		} catch {
+			return null;
+		}
+	}, [pathname]);
 	const treeValueOption = Result.value(treeResult);
 	const treeSha = useMemo(
 		() => (Option.isSome(treeValueOption) ? treeValueOption.value.sha : "HEAD"),

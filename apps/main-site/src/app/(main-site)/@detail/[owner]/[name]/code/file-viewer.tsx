@@ -45,12 +45,12 @@ export async function FileViewer({
 	owner,
 	name,
 	path,
-	treeSha,
+	refName,
 }: {
 	owner: string;
 	name: string;
 	path: string | null;
-	treeSha: string | null;
+	refName: string;
 }) {
 	if (path === null) {
 		return (
@@ -69,7 +69,7 @@ export async function FileViewer({
 				ownerLogin: owner,
 				name,
 				path,
-				ref: "HEAD",
+				ref: refName,
 			},
 		);
 
@@ -117,12 +117,10 @@ export async function FileViewer({
 		}
 
 		if (fileData.content === null) {
-			const resolvedTreeSha = treeSha ?? "HEAD";
-
 			await fetchAuthMutation(api.rpc.codeBrowse.markFileRead, {
 				ownerLogin: owner,
 				name,
-				treeSha: resolvedTreeSha,
+				treeSha: refName,
 				path: fileData.path,
 				fileSha: fileData.sha,
 			}).catch(() => null);
@@ -148,11 +146,10 @@ export async function FileViewer({
 		}
 
 		const lineCount = fileData.content.split("\n").length;
-		const resolvedTreeSha = treeSha ?? "HEAD";
 		await fetchAuthMutation(api.rpc.codeBrowse.markFileRead, {
 			ownerLogin: owner,
 			name,
-			treeSha: resolvedTreeSha,
+			treeSha: refName,
 			path: fileData.path,
 			fileSha: fileData.sha,
 		}).catch(() => null);

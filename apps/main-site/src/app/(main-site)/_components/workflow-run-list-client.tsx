@@ -128,7 +128,7 @@ function WorkflowRunListLoaded({
 
 	const pathname = usePathname();
 	const activeRunNumber = (() => {
-		const match = /\/actions\/(\d+)/.exec(pathname);
+		const match = /\/actions\/runs\/(\d+)/.exec(pathname);
 		return match?.[1] ? Number.parseInt(match[1], 10) : null;
 	})();
 
@@ -149,7 +149,7 @@ function WorkflowRunListLoaded({
 			{runs.map((run) => (
 				<Link
 					key={run.githubRunId}
-					href={`/${owner}/${name}/actions/${run.runNumber}`}
+					href={`/${owner}/${name}/actions/runs/${run.runNumber}`}
 					className={cn(
 						"flex items-start gap-2 rounded-md px-2 py-1.5 text-sm transition-colors no-underline",
 						activeRunNumber === run.runNumber

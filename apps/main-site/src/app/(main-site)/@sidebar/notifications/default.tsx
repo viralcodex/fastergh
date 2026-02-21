@@ -4,7 +4,7 @@ import { serverQueries } from "@/lib/server-queries";
 import { SidebarClient, SidebarSkeleton } from "../sidebar-client";
 import { SidebarRepoList } from "../sidebar-repo-list";
 
-export default function InboxSidebarDefault() {
+export default function NotificationsSidebarDefault() {
 	return (
 		<Suspense fallback={<SidebarSkeleton />}>
 			<SidebarContent />

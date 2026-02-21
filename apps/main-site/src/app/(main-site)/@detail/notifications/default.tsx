@@ -1,17 +1,17 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { serverNotifications } from "@/lib/server-notifications";
-import { InboxClient, InboxSkeleton } from "./inbox-client";
+import { InboxClient, InboxSkeleton } from "../inbox/inbox-client";
 
-export default function InboxDefault() {
+export default function NotificationsDefault() {
 	return (
 		<Suspense fallback={<InboxSkeleton />}>
-			<InboxContent />
+			<NotificationsContent />
 		</Suspense>
 	);
 }
 
-async function InboxContent() {
+async function NotificationsContent() {
 	await connection();
 	const initialNotifications =
 		await serverNotifications.listNotifications.queryPromise({});

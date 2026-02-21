@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { fetchAuthMutation } from "@/lib/auth-server";
 import { serverQueries } from "@/lib/server-queries";
 import { PrDetailSkeleton } from "../../../../../_components/skeletons";
-import { PrDetailClient } from "./pr-detail-client";
+import { PrDetailClient } from "../../pulls/[number]/pr-detail-client";
 
 export default function PrDetailSlot(props: {
 	params: Promise<{ owner: string; name: string; number: string }>;

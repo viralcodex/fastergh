@@ -129,7 +129,7 @@ function getNotificationHref(n: NotificationItem): string | null {
 	const [owner, name] = n.repositoryFullName.split("/");
 	if (!owner || !name) return null;
 	if (n.subjectType === "PullRequest") {
-		return `/${owner}/${name}/pulls/${n.entityNumber}`;
+		return `/${owner}/${name}/pull/${n.entityNumber}`;
 	}
 	if (n.subjectType === "Issue") {
 		return `/${owner}/${name}/issues/${n.entityNumber}`;
@@ -275,7 +275,7 @@ export function InboxClient({
 									onClick={() => {
 										authClient.signIn.oauth2({
 											providerId: "github-notifications",
-											callbackURL: "/inbox",
+											callbackURL: "/notifications",
 										});
 									}}
 								>
@@ -289,7 +289,7 @@ export function InboxClient({
 									onClick={() => {
 										authClient.signIn.oauth2({
 											providerId: "github-notifications",
-											callbackURL: "/inbox",
+											callbackURL: "/notifications",
 										});
 									}}
 								>
@@ -426,7 +426,7 @@ export function InboxClient({
 									Go to Workbench
 								</Link>
 								<Link
-									href="/inbox"
+									href="/notifications"
 									className="block no-underline text-muted-foreground hover:text-foreground"
 								>
 									Stay in Inbox

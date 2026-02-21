@@ -294,7 +294,7 @@ function DashboardCommandPalette({
 									value={`pr-${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
 									onSelect={() =>
 										handleSelect(
-											`/${pr.ownerLogin}/${pr.repoName}/pulls/${pr.number}`,
+											`/${pr.ownerLogin}/${pr.repoName}/pull/${pr.number}`,
 										)
 									}
 								>
@@ -521,7 +521,7 @@ function AttentionBanner({
 				{items.map((item, i) => (
 					<Link
 						key={`${item.ownerLogin}/${item.repoName}#${item.number}`}
-						href={`/${item.ownerLogin}/${item.repoName}/pulls/${item.number}`}
+						href={`/${item.ownerLogin}/${item.repoName}/pull/${item.number}`}
 						className={cn(
 							"flex items-center gap-3 px-3 py-2 no-underline transition-colors hover:bg-status-closed/10",
 							i > 0 && "border-t border-status-closed/10",
@@ -611,7 +611,7 @@ function EmptyState({ children }: { children: ReactNode }) {
 function PrRow({ pr, isOwned }: { pr: DashboardPrItem; isOwned: boolean }) {
 	return (
 		<Link
-			href={`/${pr.ownerLogin}/${pr.repoName}/pulls/${pr.number}`}
+			href={`/${pr.ownerLogin}/${pr.repoName}/pull/${pr.number}`}
 			className="flex items-center gap-2.5 border-b border-border/30 px-3 py-2 no-underline transition-colors hover:bg-accent/50 last:border-b-0"
 		>
 			<PrStateIcon state={pr.state} draft={pr.draft} />

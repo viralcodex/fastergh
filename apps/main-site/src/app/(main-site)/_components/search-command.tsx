@@ -261,7 +261,7 @@ function RepoQuickActions({
 			kind: "repo",
 		},
 		{
-			path: `${base}/issues?new=1`,
+			path: `${base}/issues/new`,
 			title: "Create New Issue",
 			subtitle: `${repo.owner}/${repo.name}`,
 			kind: "issue",
@@ -273,13 +273,13 @@ function RepoQuickActions({
 			kind: "actions",
 		},
 		{
-			path: `${base}/code`,
+			path: `${base}/tree/HEAD`,
 			title: "Browse Code",
 			subtitle: `${repo.owner}/${repo.name}`,
 			kind: "code",
 		},
 		{
-			path: "/inbox",
+			path: "/notifications",
 			title: "Open Inbox",
 			subtitle: "Notifications",
 			kind: "inbox",
@@ -334,7 +334,7 @@ function QuickNumberNavigation({
 		});
 	} else if (directPr?.[1] !== undefined) {
 		paths.push({
-			path: `/${repo.owner}/${repo.name}/pulls/${number}`,
+			path: `/${repo.owner}/${repo.name}/pull/${number}`,
 			title: `Open Pull Request #${number}`,
 			subtitle: `${repo.owner}/${repo.name}`,
 			kind: "pr",
@@ -342,7 +342,7 @@ function QuickNumberNavigation({
 	} else {
 		paths.push(
 			{
-				path: `/${repo.owner}/${repo.name}/pulls/${number}`,
+				path: `/${repo.owner}/${repo.name}/pull/${number}`,
 				title: `Open Pull Request #${number}`,
 				subtitle: `${repo.owner}/${repo.name}`,
 				kind: "pr",
@@ -383,7 +383,7 @@ function SearchResultRow({
 	onSelect: (target: NavigationTarget) => void;
 }) {
 	const kind: NavigationKind = item.type === "pr" ? "pr" : "issue";
-	const segment = item.type === "pr" ? "pulls" : "issues";
+	const segment = item.type === "pr" ? "pull" : "issues";
 	const target: NavigationTarget = {
 		path: `/${repo.owner}/${repo.name}/${segment}/${item.number}`,
 		title: item.title,
@@ -585,7 +585,7 @@ function GlobalWorkResults({
 		<CommandGroup heading="Priority Work Across Repos">
 			{filtered.map((item) => {
 				const target: NavigationTarget = {
-					path: `/${item.ownerLogin}/${item.repoName}/pulls/${item.number}`,
+					path: `/${item.ownerLogin}/${item.repoName}/pull/${item.number}`,
 					title: item.title,
 					subtitle: `${item.ownerLogin}/${item.repoName} · PR #${item.number}`,
 					kind: "pr",
@@ -836,7 +836,7 @@ function GlobalQuickViews({
 				value="view inbox"
 				onSelect={() =>
 					onSelect({
-						path: "/inbox",
+						path: "/notifications",
 						title: "Inbox",
 						subtitle: "Cross-repo notification queue",
 						kind: "global",

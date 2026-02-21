@@ -997,6 +997,109 @@ const handleInstallationEvent = (
 		const accountType =
 			str(account.type) === "Organization" ? "Organization" : "User";
 
+		const upsertInstallationRepositories = (
+			repositories: Array<InstallationRepository>,
+		) =>
+			Effect.gen(function* () {
+				let newRepoCount = 0;
+
+				for (const repo of repositories) {
+					const githubRepoId = repo.id;
+					const fullName = repo.full_name;
+					const stargazersCount = repo.stargazers_count;
+					const parts = fullName.split("/");
+					if (parts.length !== 2) continue;
+
+					const repoName = parts[1];
+					if (repoName === undefined) continue;
+
+					const existingRepo = yield* ctx.db
+						.query("github_repositories")
+						.withIndex("by_githubRepoId", (q) =>
+							q.eq("githubRepoId", githubRepoId),
+						)
+						.first();
+
+					const isNewRepo = Option.isNone(existingRepo);
+
+					if (isNewRepo) {
+						newRepoCount += 1;
+						yield* ctx.db.insert("github_repositories", {
+							githubRepoId,
+							installationId,
+							ownerId: accountId,
+							ownerLogin: accountLogin,
+							name: repoName,
+							fullName,
+							private: repo.private,
+							visibility: repo.private ? "private" : "public",
+							defaultBranch: repo.default_branch ?? "main",
+							archived: false,
+							disabled: false,
+							fork: false,
+							pushedAt: null,
+							githubUpdatedAt: now,
+							cachedAt: now,
+							connectedByUserId: null,
+							stargazersCount: stargazersCount ?? 0,
+						});
+
+						// Create sync job + start bootstrap workflow for the new repo.
+						// Uses the installation token (no user session available from webhooks).
+						const lockKey = `repo-bootstrap:${installationId}:${githubRepoId}`;
+						const existingJob = yield* ctx.db
+							.query("github_sync_jobs")
+							.withIndex("by_lockKey", (q) => q.eq("lockKey", lockKey))
+							.first();
+
+						if (Option.isNone(existingJob)) {
+							yield* ctx.db.insert("github_sync_jobs", {
+								jobType: "backfill",
+								scopeType: "repository",
+								triggerReason: "install",
+								lockKey,
+								installationId,
+								repositoryId: githubRepoId,
+								entityType: null,
+								state: "pending",
+								attemptCount: 0,
+								nextRunAt: now,
+								lastError: null,
+								currentStep: null,
+								completedSteps: [],
+								itemsFetched: 0,
+								createdAt: now,
+								updatedAt: now,
+							});
+
+							yield* ctx.runMutation(
+								internal.rpc.bootstrapWorkflow.startBootstrap,
+								{
+									repositoryId: githubRepoId,
+									fullName,
+									lockKey,
+									connectedByUserId: null,
+									installationId,
+								},
+							);
+						}
+					} else if (stargazersCount === undefined) {
+						yield* ctx.db.patch(existingRepo.value._id, {
+							installationId,
+							cachedAt: now,
+						});
+					} else {
+						yield* ctx.db.patch(existingRepo.value._id, {
+							installationId,
+							cachedAt: now,
+							stargazersCount,
+						});
+					}
+				}
+
+				return newRepoCount;
+			});
+
 		if (eventName === "installation") {
 			const existing = yield* ctx.db
 				.query("github_installations")
@@ -1079,10 +1182,66 @@ const handleInstallationEvent = (
 				console.info(
 					`[webhookProcessor] Installation created: ${installationId} (${accountLogin})`,
 				);
+
+				const createdRepos = parseInstallationRepositories(
+					payload.repositories,
+				);
+				const createdRepoCount =
+					yield* upsertInstallationRepositories(createdRepos);
+
+				if (createdRepoCount > 0) {
+					yield* scheduleInstallationPermissionSync(payload).pipe(
+						Effect.ignoreLogged,
+					);
+				}
 			} else if (action === "deleted" && Option.isSome(existing)) {
+				const reposForInstallation = yield* ctx.db
+					.query("github_repositories")
+					.withIndex("by_installationId_and_githubUpdatedAt", (q) =>
+						q.eq("installationId", installationId),
+					)
+					.collect();
+
+				let deletedRepoCount = 0;
+				let deletedPermissionCount = 0;
+				for (const repoDoc of reposForInstallation) {
+					const permissions = yield* ctx.db
+						.query("github_user_repo_permissions")
+						.withIndex("by_repositoryId", (q) =>
+							q.eq("repositoryId", repoDoc.githubRepoId),
+						)
+						.collect();
+
+					for (const permission of permissions) {
+						yield* ctx.db.delete(permission._id);
+						deletedPermissionCount += 1;
+					}
+
+					yield* ctx.db.delete(repoDoc._id);
+					deletedRepoCount += 1;
+				}
+
+				const scopeTypes: ReadonlyArray<
+					"installation" | "repository" | "entity"
+				> = ["installation", "repository", "entity"];
+				let deletedSyncJobCount = 0;
+				for (const scopeType of scopeTypes) {
+					const jobs = yield* ctx.db
+						.query("github_sync_jobs")
+						.withIndex("by_scopeType_and_installationId", (q) =>
+							q.eq("scopeType", scopeType).eq("installationId", installationId),
+						)
+						.collect();
+
+					for (const job of jobs) {
+						yield* ctx.db.delete(job._id);
+						deletedSyncJobCount += 1;
+					}
+				}
+
 				yield* ctx.db.delete(existing.value._id);
 				console.info(
-					`[webhookProcessor] Installation deleted: ${installationId} (${accountLogin})`,
+					`[webhookProcessor] Installation deleted: ${installationId} (${accountLogin}) repos=${deletedRepoCount} permissions=${deletedPermissionCount} jobs=${deletedSyncJobCount}`,
 				);
 			} else if (action === "suspend" && Option.isSome(existing)) {
 				yield* ctx.db.patch(existing.value._id, {
@@ -1100,101 +1259,7 @@ const handleInstallationEvent = (
 		if (eventName === "installation_repositories") {
 			// Repos added to the installation
 			const added = parseInstallationRepositories(payload.repositories_added);
-			let newRepoCount = 0;
-			for (const repo of added) {
-				const githubRepoId = num(repo.id);
-				const fullName = str(repo.full_name);
-				const stargazersCount = num(repo.stargazers_count);
-				if (githubRepoId === null || fullName === null) continue;
-
-				const parts = fullName.split("/");
-				if (parts.length !== 2) continue;
-
-				const existingRepo = yield* ctx.db
-					.query("github_repositories")
-					.withIndex("by_githubRepoId", (q) =>
-						q.eq("githubRepoId", githubRepoId),
-					)
-					.first();
-
-				const isNewRepo = Option.isNone(existingRepo);
-
-				if (isNewRepo) {
-					newRepoCount += 1;
-					yield* ctx.db.insert("github_repositories", {
-						githubRepoId,
-						installationId,
-						ownerId: accountId,
-						ownerLogin: accountLogin,
-						name: parts[1] ?? "",
-						fullName,
-						private: bool(repo.private),
-						visibility: bool(repo.private) ? "private" : "public",
-						defaultBranch: repo.default_branch ?? "main",
-						archived: false,
-						disabled: false,
-						fork: false,
-						pushedAt: null,
-						githubUpdatedAt: now,
-						cachedAt: now,
-						connectedByUserId: null,
-						stargazersCount: stargazersCount ?? 0,
-					});
-
-					// Create sync job + start bootstrap workflow for the new repo.
-					// Uses the installation token (no user session available from webhooks).
-					const lockKey = `repo-bootstrap:${installationId}:${githubRepoId}`;
-					const existingJob = yield* ctx.db
-						.query("github_sync_jobs")
-						.withIndex("by_lockKey", (q) => q.eq("lockKey", lockKey))
-						.first();
-
-					if (Option.isNone(existingJob)) {
-						yield* ctx.db.insert("github_sync_jobs", {
-							jobType: "backfill",
-							scopeType: "repository",
-							triggerReason: "install",
-							lockKey,
-							installationId,
-							repositoryId: githubRepoId,
-							entityType: null,
-							state: "pending",
-							attemptCount: 0,
-							nextRunAt: now,
-							lastError: null,
-							currentStep: null,
-							completedSteps: [],
-							itemsFetched: 0,
-							createdAt: now,
-							updatedAt: now,
-						});
-
-						yield* ctx.runMutation(
-							internal.rpc.bootstrapWorkflow.startBootstrap,
-							{
-								repositoryId: githubRepoId,
-								fullName,
-								lockKey,
-								connectedByUserId: null,
-								installationId,
-							},
-						);
-					}
-				} else {
-					if (stargazersCount === null) {
-						yield* ctx.db.patch(existingRepo.value._id, {
-							installationId,
-							cachedAt: now,
-						});
-					} else {
-						yield* ctx.db.patch(existingRepo.value._id, {
-							installationId,
-							cachedAt: now,
-							stargazersCount,
-						});
-					}
-				}
-			}
+			const newRepoCount = yield* upsertInstallationRepositories(added);
 
 			// When new repos are added, sync permissions for the user who
 			// triggered the installation so their sidebar updates immediately.
@@ -1211,6 +1276,16 @@ const handleInstallationEvent = (
 			for (const repo of removed) {
 				const githubRepoId = num(repo.id);
 				if (githubRepoId === null) continue;
+
+				const permissions = yield* ctx.db
+					.query("github_user_repo_permissions")
+					.withIndex("by_repositoryId", (q) =>
+						q.eq("repositoryId", githubRepoId),
+					)
+					.collect();
+				for (const permission of permissions) {
+					yield* ctx.db.delete(permission._id);
+				}
 
 				const existingRepo = yield* ctx.db
 					.query("github_repositories")

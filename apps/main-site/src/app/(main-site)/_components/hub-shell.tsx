@@ -140,17 +140,39 @@ function MobileView({
 
 	const owner = segments.length >= 2 ? segments[0] : null;
 	const name = segments.length >= 2 ? segments[1] : null;
-	const tabSegment = segments[2];
-	const tab = tabSegment === "issues" ? "issues" : "pulls";
-	const hasDetail = segments.length >= 4;
+	const detailBackHref =
+		owner !== null && name !== null
+			? (() => {
+					const tabSegment = segments[2];
+					if (tabSegment === "issues") {
+						return segments[3] === undefined
+							? null
+							: `/${owner}/${name}/issues`;
+					}
+					if (tabSegment === "pull") {
+						return segments[3] === undefined ? null : `/${owner}/${name}/pulls`;
+					}
+					if (tabSegment === "actions") {
+						const hasRun = segments[3] === "runs" && segments[4] !== undefined;
+						return hasRun ? `/${owner}/${name}/actions` : null;
+					}
+					if (tabSegment === "blob") {
+						const ref = segments[3];
+						return ref === undefined || segments[4] === undefined
+							? null
+							: `/${owner}/${name}/tree/${encodeURIComponent(ref)}`;
+					}
+					return null;
+				})()
+			: null;
 
 	// Detail view: show detail with back-to-list link
-	if (owner && name && hasDetail) {
+	if (owner && name && detailBackHref !== null) {
 		return (
 			<div className="flex h-full flex-col">
 				<div className="shrink-0 flex items-center gap-2 border-b px-3 py-2">
 					<Link
-						href={`/${owner}/${name}/${tab}`}
+						href={detailBackHref}
 						className="text-[11px] text-muted-foreground hover:text-foreground no-underline flex items-center gap-1 font-medium"
 					>
 						<ArrowLeft className="size-3" />

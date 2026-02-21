@@ -2775,7 +2775,7 @@ function InfoSidebar({
 										const internalHref =
 											check.runNumber === null
 												? null
-												: `/${owner}/${name}/actions/${check.runNumber}`;
+												: `/${owner}/${name}/actions/runs/${check.runNumber}`;
 										const href =
 											internalHref ??
 											`https://github.com/${owner}/${name}/runs/${String(check.githubCheckRunId)}`;

@@ -2,9 +2,11 @@
 
 import { Result, useAtomValue } from "@effect-atom/atom-react";
 import { Badge } from "@packages/ui/components/badge";
+import { Button } from "@packages/ui/components/button";
 import {
 	ArrowRight,
 	CircleDot,
+	Download,
 	GitPullRequest,
 	MessageCircle,
 } from "@packages/ui/components/icons";
@@ -13,6 +15,11 @@ import { Skeleton } from "@packages/ui/components/skeleton";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { Option } from "effect";
 import { useMemo } from "react";
+
+const GITHUB_APP_SLUG = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG ?? "";
+const GITHUB_APP_INSTALL_URL = GITHUB_APP_SLUG
+	? `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new`
+	: "";
 
 function formatRelative(timestamp: number): string {
 	const diff = Math.floor((Date.now() - timestamp) / 1000);
@@ -106,6 +113,32 @@ export function RepoOverviewPanel({
 		);
 	}
 
+	if (overview === null) {
+		return (
+			<div className="flex h-full items-center justify-center px-6">
+				<div className="w-full max-w-md rounded-xl border bg-card p-6 text-center">
+					<h1 className="text-lg font-semibold text-foreground">
+						{owner}/{name}
+					</h1>
+					<p className="mt-2 text-sm text-muted-foreground">
+						This repository is not synced yet.
+					</p>
+					<p className="mt-1 text-xs text-muted-foreground">
+						Install the GitHub App for {owner} to start syncing this repo.
+					</p>
+					{GITHUB_APP_INSTALL_URL && (
+						<Button asChild className="mt-4">
+							<a href={GITHUB_APP_INSTALL_URL}>
+								<Download className="size-4" />
+								Install GitHub App
+							</a>
+						</Button>
+					)}
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="h-full overflow-y-auto">
 			<div className="px-6 py-8">
@@ -177,7 +210,7 @@ export function RepoOverviewPanel({
 							{prs.slice(0, 5).map((pr) => (
 								<Link
 									key={pr.number}
-									href={`/${owner}/${name}/pulls/${pr.number}`}
+									href={`/${owner}/${name}/pull/${pr.number}`}
 									className="flex items-start gap-2 px-3 py-2 transition-colors hover:bg-muted no-underline"
 								>
 									<PrStateIcon state={pr.state} draft={pr.draft} />

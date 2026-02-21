@@ -89,7 +89,7 @@ export const createAuthOptions = (ctx: GenericCtx) => {
 		account: {
 			accountLinking: {
 				enabled: true,
-				allowDifferentEmails: true,
+				allowDifferentEmails: false,
 			},
 		},
 		socialProviders: {

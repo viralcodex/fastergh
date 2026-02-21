@@ -1,10 +1,10 @@
 import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
-import { WorkflowRunDetailSkeleton } from "../../../../../_components/skeletons";
-import { WorkflowRunDetailClient } from "./workflow-run-detail-client";
+import { WorkflowRunDetailSkeleton } from "../../../../../../_components/skeletons";
+import { WorkflowRunDetailClient } from "../../[runNumber]/workflow-run-detail-client";
 
 export default function WorkflowRunDetailSlot(props: {
-	params: Promise<{ owner: string; name: string; runNumber: string }>;
+	params: Promise<{ owner: string; name: string; runId: string }>;
 }) {
 	return (
 		<Suspense fallback={<WorkflowRunDetailSkeleton />}>
@@ -16,11 +16,11 @@ export default function WorkflowRunDetailSlot(props: {
 async function WorkflowRunDetailContent({
 	paramsPromise,
 }: {
-	paramsPromise: Promise<{ owner: string; name: string; runNumber: string }>;
+	paramsPromise: Promise<{ owner: string; name: string; runId: string }>;
 }) {
 	const params = await paramsPromise;
 	const { owner, name } = params;
-	const runNumber = Number.parseInt(params.runNumber, 10);
+	const runNumber = Number.parseInt(params.runId, 10);
 
 	if (Number.isNaN(runNumber)) {
 		return (

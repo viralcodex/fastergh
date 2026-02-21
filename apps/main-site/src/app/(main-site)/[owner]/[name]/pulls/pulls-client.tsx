@@ -146,7 +146,7 @@ function PrList({
 				{prs.map((pr) => (
 					<Link
 						key={pr.number}
-						href={`/${owner}/${name}/pulls/${pr.number}`}
+						href={`/${owner}/${name}/pull/${pr.number}`}
 						className="flex items-start gap-2 sm:gap-3 px-3 py-2.5 sm:px-4 sm:py-3 hover:bg-muted/50 transition-colors"
 					>
 						<div className="mt-0.5 shrink-0">

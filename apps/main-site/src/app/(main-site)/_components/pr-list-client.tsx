@@ -73,7 +73,7 @@ export function PrListClient({
 	const pathname = usePathname();
 	const router = useRouter();
 	const activeNumber = (() => {
-		const match = /\/pulls\/(\d+)/.exec(pathname);
+		const match = /\/pull\/(\d+)/.exec(pathname);
 		return match?.[1] ? Number.parseInt(match[1], 10) : null;
 	})();
 
@@ -92,7 +92,7 @@ export function PrListClient({
 			const nextIndex = prevCountRef.current; // first item of the new page
 			const pr = filteredPrs[nextIndex];
 			if (pr) {
-				router.push(`/${owner}/${name}/pulls/${pr.number}`);
+				router.push(`/${owner}/${name}/pull/${pr.number}`);
 				scrollPrIntoView(pr.number);
 			}
 			pendingNavRef.current = null;
@@ -104,7 +104,7 @@ export function PrListClient({
 		(index: number) => {
 			const pr = filteredPrs[index];
 			if (pr) {
-				router.push(`/${owner}/${name}/pulls/${pr.number}`);
+				router.push(`/${owner}/${name}/pull/${pr.number}`);
 				scrollPrIntoView(pr.number);
 			}
 		},
@@ -173,7 +173,7 @@ export function PrListClient({
 				<Link
 					key={pr.number}
 					data-pr-number={pr.number}
-					href={`/${owner}/${name}/pulls/${pr.number}`}
+					href={`/${owner}/${name}/pull/${pr.number}`}
 					className={cn(
 						"flex items-start gap-2 rounded-md px-2 py-1.5 text-sm transition-colors no-underline",
 						activeNumber === pr.number
