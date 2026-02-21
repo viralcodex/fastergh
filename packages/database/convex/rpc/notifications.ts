@@ -82,6 +82,11 @@ class NotificationNotFound extends Schema.TaggedError<NotificationNotFound>()(
 	{ githubNotificationId: Schema.String },
 ) {}
 
+class GitHubSyncFailed extends Schema.TaggedError<GitHubSyncFailed>()(
+	"GitHubSyncFailed",
+	{ reason: Schema.String },
+) {}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -153,7 +158,7 @@ const listNotificationsDef = factory.query({
  */
 const syncNotificationsDef = factory.action({
 	success: Schema.Struct({ syncedCount: Schema.Number }),
-	error: NotAuthenticated,
+	error: Schema.Union(NotAuthenticated, GitHubSyncFailed),
 });
 
 /**
@@ -257,22 +262,13 @@ listNotificationsDef.implement(() =>
 syncNotificationsDef.implement(() =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectActionCtx;
-
-		// Resolve the signed-in user's identity via internal query
-		const identityResult = yield* ctx.runQuery(
-			internal.rpc.notifications.getViewerUserId,
-			{},
-		);
-		const IdentitySchema = Schema.Struct({
-			userId: Schema.NullOr(Schema.String),
-		});
-		const identity = Schema.decodeUnknownSync(IdentitySchema)(identityResult);
-		if (!identity.userId) {
+		const identity = yield* ctx.auth.getUserIdentity();
+		if (Option.isNone(identity)) {
 			return yield* new NotAuthenticated({
 				reason: "User is not signed in",
 			});
 		}
-		const userId = identity.userId;
+		const userId = identity.value.subject;
 
 		// Resolve the GitHub token
 		const token = yield* lookupGitHubTokenByUserIdConfect(
@@ -295,22 +291,29 @@ syncNotificationsDef.implement(() =>
 				all: false,
 				per_page: 50,
 			})
-			.pipe(Effect.catchAll(() => Effect.succeed([])));
+			.pipe(
+				Effect.catchAll(
+					(error) => new GitHubSyncFailed({ reason: String(error) }),
+				),
+			);
 
 		// Map typed Thread objects to our notification shape
-		const parsed = threads.map((n) => ({
-			githubNotificationId: n.id,
-			repositoryFullName: n.repository.full_name,
-			repositoryId: n.repository.id,
-			subjectTitle: n.subject.title,
-			subjectType: toSubjectType(n.subject.type),
-			subjectUrl: n.subject.url,
-			reason: toReason(n.reason),
-			unread: n.unread,
-			updatedAt: isoToMs(n.updated_at),
-			lastReadAt: n.last_read_at !== null ? isoToMs(n.last_read_at) : null,
-			entityNumber: parseEntityNumber(n.subject.url),
-		}));
+		const parsed = threads.map((n) => {
+			const subjectUrl = n.subject.url;
+			return {
+				githubNotificationId: n.id,
+				repositoryFullName: n.repository.full_name,
+				repositoryId: n.repository.id,
+				subjectTitle: n.subject.title,
+				subjectType: toSubjectType(n.subject.type),
+				subjectUrl,
+				reason: toReason(n.reason),
+				unread: n.unread,
+				updatedAt: isoToMs(n.updated_at),
+				lastReadAt: n.last_read_at !== null ? isoToMs(n.last_read_at) : null,
+				entityNumber: subjectUrl ? parseEntityNumber(subjectUrl) : null,
+			};
+		});
 
 		// Upsert via internal mutation
 		yield* ctx.runMutation(internal.rpc.notifications.upsertNotifications, {
@@ -435,25 +438,6 @@ markNotificationReadRemoteDef.implement((args) =>
 );
 
 // ---------------------------------------------------------------------------
-// Internal query: resolve the signed-in user's ID (used by syncNotifications action)
-// ---------------------------------------------------------------------------
-
-const getViewerUserIdDef = factory.internalQuery({
-	success: Schema.Struct({
-		userId: Schema.NullOr(Schema.String),
-	}),
-});
-
-getViewerUserIdDef.implement(() =>
-	Effect.gen(function* () {
-		const ctx = yield* ConfectQueryCtx;
-		const identity = yield* ctx.auth.getUserIdentity();
-		if (Option.isNone(identity)) return { userId: null };
-		return { userId: identity.value.subject };
-	}),
-);
-
-// ---------------------------------------------------------------------------
 // Module
 // ---------------------------------------------------------------------------
 
@@ -464,7 +448,6 @@ const notificationsModule = makeRpcModule(
 		markNotificationRead: markNotificationReadDef,
 		upsertNotifications: upsertNotificationsDef,
 		markNotificationReadRemote: markNotificationReadRemoteDef,
-		getViewerUserId: getViewerUserIdDef,
 	},
 	{ middlewares: DatabaseRpcTelemetryLayer },
 );
@@ -475,7 +458,6 @@ export const {
 	markNotificationRead,
 	upsertNotifications,
 	markNotificationReadRemote,
-	getViewerUserId,
 } = notificationsModule.handlers;
 export { notificationsModule };
 export type NotificationsModule = typeof notificationsModule;

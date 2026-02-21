@@ -472,6 +472,29 @@ const GitHubFileCacheSchema = Schema.Struct({
 });
 
 // ============================================================
+// G) Issue Template Cache
+// ============================================================
+
+const GitHubIssueTemplateCacheSchema = Schema.Struct({
+	repositoryId: Schema.Number,
+	/** Template filename (e.g. "bug_report.md") */
+	filename: Schema.String,
+	/** Display name from YAML front matter */
+	name: Schema.String,
+	/** Description from YAML front matter */
+	description: Schema.String,
+	/** Title prefix/template from YAML front matter */
+	title: Schema.NullOr(Schema.String),
+	/** Markdown body (below front matter) */
+	body: Schema.String,
+	/** Labels to auto-apply from YAML front matter */
+	labels: Schema.Array(Schema.String),
+	/** Assignees from YAML front matter */
+	assignees: Schema.Array(Schema.String),
+	cachedAt: Schema.Number,
+});
+
+// ============================================================
 // Schema Definition
 // ============================================================
 
@@ -611,6 +634,7 @@ export const confectSchema = defineSchema({
 	github_workflow_runs: defineTable(GitHubWorkflowRunSchema)
 		.index("by_repositoryId_and_githubRunId", ["repositoryId", "githubRunId"])
 		.index("by_repositoryId_and_runNumber", ["repositoryId", "runNumber"])
+		.index("by_repositoryId_and_headSha", ["repositoryId", "headSha"])
 		.index("by_repositoryId_and_updatedAt", ["repositoryId", "updatedAt"]),
 
 	github_workflow_jobs: defineTable(GitHubWorkflowJobSchema)
@@ -649,6 +673,11 @@ export const confectSchema = defineSchema({
 		"by_repositoryId_and_sha",
 		["repositoryId", "sha"],
 	),
+
+	// G) Issue Template Cache
+	github_issue_template_cache: defineTable(GitHubIssueTemplateCacheSchema)
+		.index("by_repositoryId", ["repositoryId"])
+		.index("by_repositoryId_and_filename", ["repositoryId", "filename"]),
 });
 
 export default confectSchema.convexSchemaDefinition;

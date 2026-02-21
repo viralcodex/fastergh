@@ -457,6 +457,7 @@ const CheckRunSchema = Schema.Struct({
 	conclusion: Schema.NullOr(Schema.String),
 	startedAt: Schema.NullOr(Schema.Number),
 	completedAt: Schema.NullOr(Schema.Number),
+	runNumber: Schema.NullOr(Schema.Number),
 });
 
 /**
@@ -1806,6 +1807,55 @@ getPullRequestDetailDef.implement((args) =>
 			)
 			.take(200);
 
+		const workflowRunsForHead = yield* ctx.db
+			.query("github_workflow_runs")
+			.withIndex("by_repositoryId_and_headSha", (q) =>
+				q.eq("repositoryId", repositoryId).eq("headSha", pr.headSha),
+			)
+			.take(20);
+
+		let latestRunNumberForHead: number | null = null;
+		let latestRunUpdatedAt = -1;
+		for (const workflowRun of workflowRunsForHead) {
+			if (workflowRun.updatedAt > latestRunUpdatedAt) {
+				latestRunUpdatedAt = workflowRun.updatedAt;
+				latestRunNumberForHead = workflowRun.runNumber;
+			}
+		}
+
+		const jobsByRun = yield* Effect.forEach(
+			workflowRunsForHead,
+			(workflowRun) =>
+				Effect.map(
+					ctx.db
+						.query("github_workflow_jobs")
+						.withIndex("by_repositoryId_and_githubRunId", (q) =>
+							q
+								.eq("repositoryId", repositoryId)
+								.eq("githubRunId", workflowRun.githubRunId),
+						)
+						.collect(),
+					(jobs) => ({
+						runNumber: workflowRun.runNumber,
+						updatedAt: workflowRun.updatedAt,
+						jobs,
+					}),
+				),
+			{ concurrency: 8 },
+		);
+
+		const sortedJobsByRun = [...jobsByRun].sort(
+			(a, b) => b.updatedAt - a.updatedAt,
+		);
+		const runNumberByJobName = new Map<string, number>();
+		for (const runJobs of sortedJobsByRun) {
+			for (const workflowJob of runJobs.jobs) {
+				if (!runNumberByJobName.has(workflowJob.name)) {
+					runNumberByJobName.set(workflowJob.name, runJobs.runNumber);
+				}
+			}
+		}
+
 		return {
 			repositoryId,
 			number: pr.number,
@@ -1837,6 +1887,7 @@ getPullRequestDetailDef.implement((args) =>
 				conclusion: cr.conclusion,
 				startedAt: cr.startedAt,
 				completedAt: cr.completedAt,
+				runNumber: runNumberByJobName.get(cr.name) ?? latestRunNumberForHead,
 			})),
 		};
 	}),

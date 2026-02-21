@@ -1,4 +1,5 @@
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest";
+import * as HttpClientResponse from "@effect/platform/HttpClientResponse";
 import { createRpcFactory, makeRpcModule } from "@packages/confect/rpc";
 import { Effect, Either, Option, Schema } from "effect";
 import { components, internal } from "../_generated/api";
@@ -8,7 +9,7 @@ import {
 	ConfectQueryCtx,
 	confectSchema,
 } from "../confect";
-import { GitHubApiClient } from "../shared/githubApi";
+import { GitHubApiClient, type IGitHubApiClient } from "../shared/githubApi";
 import { getInstallationToken } from "../shared/githubApp";
 import { lookupGitHubTokenByUserIdConfect } from "../shared/githubToken";
 import { DatabaseRpcTelemetryLayer } from "./telemetry";
@@ -39,6 +40,9 @@ const MAX_FILES_PER_PR = 300;
  * We return the tail so users see the latest failure details first.
  */
 const MAX_JOB_LOG_CHARS = 200_000;
+
+/** Max pages fetched when listing GitHub assignees (100/page). */
+const MAX_ASSIGNEE_FETCH_PAGES = 10;
 
 /** Sync users whose permissions are older than 6 hours. */
 const PERMISSION_STALE_WINDOW_MS = 6 * 60 * 60 * 1000;
@@ -128,6 +132,66 @@ const toRepoPermissionItem = (value: unknown) => {
 // Endpoint definitions
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+class NotAuthenticated extends Schema.TaggedError<NotAuthenticated>()(
+	"NotAuthenticated",
+	{ reason: Schema.String },
+) {}
+
+class ActionsControlError extends Schema.TaggedError<ActionsControlError>()(
+	"ActionsControlError",
+	{ status: Schema.Number, message: Schema.String },
+) {}
+
+// ---------------------------------------------------------------------------
+// Actions control endpoint definitions
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-run an entire workflow run.
+ * POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun
+ */
+const rerunWorkflowRunDef = factory.action({
+	payload: {
+		ownerLogin: Schema.String,
+		name: Schema.String,
+		githubRunId: Schema.Number,
+	},
+	success: Schema.Struct({ accepted: Schema.Boolean }),
+	error: Schema.Union(NotAuthenticated, ActionsControlError),
+});
+
+/**
+ * Re-run only failed jobs in a workflow run.
+ * POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs
+ */
+const rerunFailedJobsDef = factory.action({
+	payload: {
+		ownerLogin: Schema.String,
+		name: Schema.String,
+		githubRunId: Schema.Number,
+	},
+	success: Schema.Struct({ accepted: Schema.Boolean }),
+	error: Schema.Union(NotAuthenticated, ActionsControlError),
+});
+
+/**
+ * Cancel a workflow run.
+ * POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel
+ */
+const cancelWorkflowRunDef = factory.action({
+	payload: {
+		ownerLogin: Schema.String,
+		name: Schema.String,
+		githubRunId: Schema.Number,
+	},
+	success: Schema.Struct({ accepted: Schema.Boolean }),
+	error: Schema.Union(NotAuthenticated, ActionsControlError),
+});
+
 /**
  * Fetch the unified diff for a pull request from the GitHub API.
  * Returns raw unified diff text (or null on 404/error).
@@ -159,6 +223,74 @@ const fetchWorkflowJobLogsDef = factory.action({
 			truncated: Schema.Boolean,
 		}),
 	),
+});
+
+const RepoAssigneeSchema = Schema.Struct({
+	login: Schema.String,
+	avatarUrl: Schema.String,
+});
+
+const RepoAssigneeListItemSchema = Schema.Struct({
+	login: Schema.String,
+	avatarUrl: Schema.NullOr(Schema.String),
+});
+
+const GraphQlErrorSchema = Schema.Struct({
+	message: Schema.String,
+});
+
+const AssignableUsersConnectionSchema = Schema.Struct({
+	nodes: Schema.Array(RepoAssigneeSchema),
+	pageInfo: Schema.Struct({
+		hasNextPage: Schema.Boolean,
+		endCursor: Schema.NullOr(Schema.String),
+	}),
+});
+
+const RepoAssignableUsersRepositorySchema = Schema.Struct({
+	assignableUsers: AssignableUsersConnectionSchema,
+});
+
+const ListRepoAssigneesGraphQlResponseSchema = Schema.Struct({
+	data: Schema.optional(
+		Schema.Struct({
+			repository: Schema.NullOr(RepoAssignableUsersRepositorySchema),
+		}),
+	),
+	errors: Schema.optional(Schema.Array(GraphQlErrorSchema)),
+});
+
+const LIST_REPO_ASSIGNEES_QUERY = `
+query ListRepoAssignees($owner: String!, $name: String!, $query: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    assignableUsers(first: 100, query: $query, after: $after) {
+      nodes {
+        login
+        avatarUrl
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}
+`;
+
+/**
+ * Fetch assignable users for a repository directly from GitHub.
+ *
+ * Uses the signed-in user's OAuth token and paginates through
+ * GraphQL `repository.assignableUsers(query:, first:, after:)` to support
+ * repositories where assignees are not yet represented in local projections.
+ */
+const listRepoAssigneesDef = factory.action({
+	payload: {
+		ownerLogin: Schema.String,
+		name: Schema.String,
+		query: Schema.optional(Schema.String),
+	},
+	success: Schema.Array(RepoAssigneeListItemSchema),
 });
 
 /**
@@ -670,6 +802,193 @@ fetchWorkflowJobLogsDef.implement((args) =>
 	}).pipe(Effect.catchAll(() => Effect.succeed(null))),
 );
 
+// ---------------------------------------------------------------------------
+// Actions control implementations — uses GitHubApiClient.httpClient
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: call a GitHub Actions control endpoint (POST, empty body, 202 on success).
+ * Uses the existing GitHubApiClient httpClient which handles auth headers,
+ * base URL rewriting, and rate-limit detection.
+ */
+const callActionsControlEndpoint = (
+	github: IGitHubApiClient,
+	path: string,
+): Effect.Effect<{ accepted: boolean }, ActionsControlError> =>
+	Effect.gen(function* () {
+		const response = yield* github.httpClient
+			.execute(HttpClientRequest.post(path))
+			.pipe(
+				Effect.catchAll(
+					(e) =>
+						new ActionsControlError({
+							status: 0,
+							message: `Request failed: ${e.message}`,
+						}),
+				),
+			);
+
+		if (response.status === 202 || response.status === 201) {
+			return { accepted: true };
+		}
+
+		const errorBody = yield* Effect.orElseSucceed(response.text, () => "");
+
+		let message = `GitHub returned ${response.status}`;
+		try {
+			const parsed = JSON.parse(errorBody);
+			if (
+				typeof parsed === "object" &&
+				parsed !== null &&
+				"message" in parsed
+			) {
+				message = typeof parsed.message === "string" ? parsed.message : message;
+			}
+		} catch {
+			// use default message
+		}
+
+		return yield* new ActionsControlError({ status: response.status, message });
+	});
+
+/**
+ * Helper: resolve the signed-in user's GitHub API client for action calls.
+ */
+const resolveActionsGitHubClient = () =>
+	Effect.gen(function* () {
+		const ctx = yield* ConfectActionCtx;
+		const identity = yield* ctx.auth.getUserIdentity();
+		if (Option.isNone(identity)) {
+			return yield* new NotAuthenticated({
+				reason: "User is not signed in",
+			});
+		}
+		const token = yield* lookupGitHubTokenByUserIdConfect(
+			ctx.runQuery,
+			identity.value.subject,
+		).pipe(Effect.catchAll((e) => new NotAuthenticated({ reason: e.reason })));
+		return yield* Effect.provide(
+			GitHubApiClient,
+			GitHubApiClient.fromToken(token),
+		);
+	});
+
+listRepoAssigneesDef.implement((args) =>
+	Effect.gen(function* () {
+		const github = yield* resolveActionsGitHubClient();
+		const normalizedQuery = (args.query ?? "").trim();
+
+		const assigneesByLogin = new Map<
+			string,
+			Schema.Schema.Type<typeof RepoAssigneeListItemSchema>
+		>();
+
+		let page = 1;
+		let hasMore = true;
+		let cursor: string | null = null;
+
+		while (hasMore && page <= MAX_ASSIGNEE_FETCH_PAGES) {
+			const request: HttpClientRequest.HttpClientRequest =
+				HttpClientRequest.post("/graphql").pipe(
+					HttpClientRequest.bodyUnsafeJson({
+						query: LIST_REPO_ASSIGNEES_QUERY,
+						variables: {
+							owner: args.ownerLogin,
+							name: args.name,
+							query: normalizedQuery,
+							after: cursor,
+						},
+					}),
+				);
+
+			const response: HttpClientResponse.HttpClientResponse =
+				yield* github.httpClient.execute(request);
+
+			if (response.status === 404) {
+				return [];
+			}
+
+			if (response.status < 200 || response.status >= 300) {
+				const errorBody = yield* Effect.orElseSucceed(response.text, () => "");
+				return yield* Effect.fail(
+					new Error(`GitHub API returned ${response.status}: ${errorBody}`),
+				);
+			}
+
+			const graphQlResponse: Schema.Schema.Type<
+				typeof ListRepoAssigneesGraphQlResponseSchema
+			> = yield* HttpClientResponse.schemaBodyJson(
+				ListRepoAssigneesGraphQlResponseSchema,
+			)(response);
+
+			if (
+				graphQlResponse.errors !== undefined &&
+				graphQlResponse.errors.length > 0
+			) {
+				const firstError = graphQlResponse.errors[0];
+				if (firstError !== undefined) {
+					return yield* Effect.fail(new Error(firstError.message));
+				}
+				return [];
+			}
+
+			const repository: Schema.Schema.Type<
+				typeof RepoAssignableUsersRepositorySchema
+			> | null = graphQlResponse.data?.repository ?? null;
+			if (repository === null) {
+				return [];
+			}
+
+			const pageAssignees = repository.assignableUsers.nodes;
+
+			for (const assignee of pageAssignees) {
+				assigneesByLogin.set(assignee.login, {
+					login: assignee.login,
+					avatarUrl: assignee.avatarUrl,
+				});
+			}
+
+			hasMore = repository.assignableUsers.pageInfo.hasNextPage;
+			cursor = repository.assignableUsers.pageInfo.endCursor;
+			page += 1;
+		}
+
+		return [...assigneesByLogin.values()].sort((a, b) =>
+			a.login.localeCompare(b.login),
+		);
+	}).pipe(Effect.catchAll(() => Effect.succeed([]))),
+);
+
+rerunWorkflowRunDef.implement((args) =>
+	Effect.gen(function* () {
+		const github = yield* resolveActionsGitHubClient();
+		return yield* callActionsControlEndpoint(
+			github,
+			`/repos/${encodeURIComponent(args.ownerLogin)}/${encodeURIComponent(args.name)}/actions/runs/${String(args.githubRunId)}/rerun`,
+		);
+	}),
+);
+
+rerunFailedJobsDef.implement((args) =>
+	Effect.gen(function* () {
+		const github = yield* resolveActionsGitHubClient();
+		return yield* callActionsControlEndpoint(
+			github,
+			`/repos/${encodeURIComponent(args.ownerLogin)}/${encodeURIComponent(args.name)}/actions/runs/${String(args.githubRunId)}/rerun-failed-jobs`,
+		);
+	}),
+);
+
+cancelWorkflowRunDef.implement((args) =>
+	Effect.gen(function* () {
+		const github = yield* resolveActionsGitHubClient();
+		return yield* callActionsControlEndpoint(
+			github,
+			`/repos/${encodeURIComponent(args.ownerLogin)}/${encodeURIComponent(args.name)}/actions/runs/${String(args.githubRunId)}/cancel`,
+		);
+	}),
+);
+
 syncPrFilesDef.implement((args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectActionCtx;
@@ -830,8 +1149,13 @@ const githubActionsModule = makeRpcModule(
 		upsertUserRepoPermissions: upsertUserRepoPermissionsDef,
 		fetchPrDiff: fetchPrDiffDef,
 		fetchWorkflowJobLogs: fetchWorkflowJobLogsDef,
+		listRepoAssignees: listRepoAssigneesDef,
 		syncPrFiles: syncPrFilesDef,
 		upsertPrFiles: upsertPrFilesDef,
+		// Actions control plane
+		rerunWorkflowRun: rerunWorkflowRunDef,
+		rerunFailedJobs: rerunFailedJobsDef,
+		cancelWorkflowRun: cancelWorkflowRunDef,
 	},
 	{ middlewares: DatabaseRpcTelemetryLayer },
 );
@@ -845,8 +1169,12 @@ export const {
 	upsertUserRepoPermissions,
 	fetchPrDiff,
 	fetchWorkflowJobLogs,
+	listRepoAssignees,
 	syncPrFiles,
 	upsertPrFiles,
+	rerunWorkflowRun,
+	rerunFailedJobs,
+	cancelWorkflowRun,
 } = githubActionsModule.handlers;
-export { githubActionsModule };
+export { githubActionsModule, NotAuthenticated, ActionsControlError };
 export type GithubActionsModule = typeof githubActionsModule;

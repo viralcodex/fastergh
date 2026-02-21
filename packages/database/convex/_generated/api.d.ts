@@ -20,6 +20,7 @@ import type * as rpc_bootstrapWrite from "../rpc/bootstrapWrite.js";
 import type * as rpc_codeBrowse from "../rpc/codeBrowse.js";
 import type * as rpc_githubActions from "../rpc/githubActions.js";
 import type * as rpc_githubWrite from "../rpc/githubWrite.js";
+import type * as rpc_issueTemplates from "../rpc/issueTemplates.js";
 import type * as rpc_notifications from "../rpc/notifications.js";
 import type * as rpc_onDemandSync from "../rpc/onDemandSync.js";
 import type * as rpc_projectionQueries from "../rpc/projectionQueries.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   "rpc/codeBrowse": typeof rpc_codeBrowse;
   "rpc/githubActions": typeof rpc_githubActions;
   "rpc/githubWrite": typeof rpc_githubWrite;
+  "rpc/issueTemplates": typeof rpc_issueTemplates;
   "rpc/notifications": typeof rpc_notifications;
   "rpc/onDemandSync": typeof rpc_onDemandSync;
   "rpc/projectionQueries": typeof rpc_projectionQueries;
