@@ -69,22 +69,31 @@ function CommandDialog({
 
 function CommandInput({
 	className,
+	leading,
+	trailing,
 	...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & {
+	leading?: React.ReactNode;
+	trailing?: React.ReactNode;
+}) {
 	return (
 		<div
 			data-slot="command-input-wrapper"
-			className="flex h-9 items-center gap-2 border-b px-3"
+			className="flex min-h-9 items-center gap-2 border-b px-3"
 		>
 			<SearchIcon className="size-4 shrink-0 opacity-50" />
+			{leading !== undefined && (
+				<div className="shrink-0 overflow-hidden">{leading}</div>
+			)}
 			<CommandPrimitive.Input
 				data-slot="command-input"
 				className={cn(
-					"placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+					"placeholder:text-muted-foreground flex h-10 min-w-[8rem] flex-1 rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
 					className,
 				)}
 				{...props}
 			/>
+			{trailing !== undefined && <div className="shrink-0">{trailing}</div>}
 		</div>
 	);
 }

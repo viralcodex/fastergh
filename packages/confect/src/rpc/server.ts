@@ -198,17 +198,25 @@ type MiddlewareConfig = {
 const StaticLayerReady = Context.GenericTag<true>("@confect/StaticLayerReady");
 
 const executeMiddlewares = (
+	endpointMiddlewares: ReadonlyArray<RpcMiddleware.TagClassAny>,
 	middlewareImpls: ReadonlyArray<MiddlewareImplementation>,
 	options: MiddlewareOptions,
 ): Effect.Effect<Context.Context<never>, unknown, never> => {
-	if (middlewareImpls.length === 0) {
+	if (endpointMiddlewares.length === 0 || middlewareImpls.length === 0) {
 		return Effect.succeed(Context.empty());
 	}
 
 	return Effect.gen(function* () {
 		let ctx: Context.Context<never> = Context.empty();
 		
-		for (const middlewareImpl of middlewareImpls) {
+		for (const endpointMiddleware of endpointMiddlewares) {
+			const middlewareImpl = middlewareImpls.find(
+				(candidate) => candidate.middleware === endpointMiddleware,
+			);
+			if (!middlewareImpl) {
+				continue;
+			}
+
 			const result = yield* middlewareImpl.impl(options);
 			const providesTag = middlewareImpl.middleware.provides;
 			if (providesTag) {
@@ -257,6 +265,7 @@ export const createRpcFactory = <
 		successSchema: Success,
 		errorSchema: Error,
 		middlewareConfig: MiddlewareConfig | undefined,
+		endpointMiddlewares: ReadonlyArray<RpcMiddleware.TagClassAny>,
 		handlerRef: HandlerRef,
 	) => {
 		const payloadSchema = Schema.Struct(payloadFields) as unknown as Schema.Schema<Schema.Struct.Type<PayloadFields>, Schema.Struct.Encoded<PayloadFields>, never>;
@@ -295,7 +304,11 @@ export const createRpcFactory = <
 
 			const effect = Effect.gen(function* () {
 				const middlewareCtx = middlewareConfig?.implementations?.length
-					? yield* executeMiddlewares(middlewareConfig.implementations, middlewareOptions)
+					? yield* executeMiddlewares(
+						endpointMiddlewares,
+						middlewareConfig.implementations,
+						middlewareOptions,
+					)
 					: Context.empty();
 
 				const handlerEffect = handler(decodedArgs as never);
@@ -371,7 +384,16 @@ export const createRpcFactory = <
 				success: successSchema,
 				error: errorSchema,
 			});
-			const convexHandler = makeConvexHandler(endpointConfig, tag, mergedPayload, successSchema, errorSchema, middlewareConfig, handlerRef);
+			const convexHandler = makeConvexHandler(
+				endpointConfig,
+				tag,
+				mergedPayload,
+				successSchema,
+				errorSchema,
+				middlewareConfig,
+				middlewares,
+				handlerRef,
+			);
 			const fn = endpointConfig.registrar({ args: v.any(), handler: convexHandler });
 			return { _tag: tag, rpc, fn: fn as ConvexFnType };
 		},
