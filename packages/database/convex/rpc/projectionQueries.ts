@@ -1016,7 +1016,12 @@ const selectSidebarAndDashboardRepos = Effect.gen(function* () {
 		sortedMemberOrgRepos.length > 0 || sortedInteractedOrgRepos.length > 0;
 
 	const personalizedRepos = hasOrganizationContext
-		? [...sortedMemberOrgRepos, ...sortedInteractedOrgRepos]
+		? [
+				...sortedMemberOrgRepos,
+				...sortedInteractedOrgRepos,
+				...sortedMemberPersonalRepos,
+				...sortedInteractedPersonalRepos,
+			]
 		: [...sortedMemberPersonalRepos, ...sortedInteractedPersonalRepos];
 
 	if (personalizedRepos.length > 0) {
