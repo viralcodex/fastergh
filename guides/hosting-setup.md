@@ -27,7 +27,6 @@ Required core values:
 - `BETTER_AUTH_SECRET`
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
-- `GITHUB_APP_ID`
 - `GITHUB_APP_SLUG`
 - `GITHUB_APP_PRIVATE_KEY`
 
@@ -46,7 +45,6 @@ openssl rand -hex 32   # for BETTER_AUTH_SECRET
   - `GITHUB_WEBHOOK_SECRET`
   - `GITHUB_CLIENT_ID`
   - `GITHUB_CLIENT_SECRET`
-  - `GITHUB_APP_ID`
   - `GITHUB_APP_PRIVATE_KEY`
 - Frontend host env (`apps/main-site` runtime):
   - `CONVEX_URL`
@@ -97,7 +95,7 @@ QuickHub uses Better Auth social login with GitHub OAuth credentials.
    - `workflow_run`
    - `workflow_job`
 5. Generate and store:
-   - App ID -> `GITHUB_APP_ID`
+   - Client ID -> `GITHUB_CLIENT_ID`
    - App slug -> `GITHUB_APP_SLUG`
    - Private key PEM -> `GITHUB_APP_PRIVATE_KEY`
 6. Install the app to your org/user and select repositories.
@@ -128,7 +126,6 @@ bunx convex env set CONVEX_SITE_URL "<value>"
 bunx convex env set SITE_URL "<value>"
 bunx convex env set GITHUB_CLIENT_ID "<value>"
 bunx convex env set GITHUB_CLIENT_SECRET "<value>"
-bunx convex env set GITHUB_APP_ID "<value>"
 bunx convex env set GITHUB_APP_PRIVATE_KEY "<value>"
 bunx convex env list
 ```

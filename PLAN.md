@@ -213,7 +213,7 @@ When ready to migrate from PAT to GitHub App:
 - Generate a private key and store securely
 
 **2. Store App Credentials in Convex**
-- `GITHUB_APP_ID` — App ID from GitHub
+- `GITHUB_CLIENT_ID` — GitHub App client ID (JWT issuer)
 - `GITHUB_APP_PRIVATE_KEY` — PEM-encoded private key
 - Store in Convex environment variables (not `.env` for production)
 
@@ -223,7 +223,7 @@ static Installation = (installationId: number) =>
   Layer.effect(
     this,
     Effect.gen(function* () {
-      // Use GITHUB_APP_ID + GITHUB_APP_PRIVATE_KEY to generate JWT
+      // Use GITHUB_CLIENT_ID + GITHUB_APP_PRIVATE_KEY to generate JWT
       // Exchange JWT for installation access token via POST /app/installations/{id}/access_tokens
       // Cache token until expires_at (typically 1 hour)
       // Return cached token or refresh on expiry

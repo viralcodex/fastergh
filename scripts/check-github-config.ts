@@ -108,12 +108,17 @@ const getConvexEnvVars = async (): Promise<Map<string, string>> => {
 const checkGitHubApp = async (slug: string) => {
 	try {
 		const result =
-			await $`gh api /apps/${slug} --jq '.name,.id,.slug,.html_url'`.text();
+			await $`gh api /apps/${slug} --jq '.name,.id,.client_id,.slug,.html_url'`.text();
 		const lines = result.trim().split("\n");
-		if (lines.length >= 2) {
-			pass(`GitHub App found: ${lines[0]} (id: ${lines[1]})`);
-			if (lines[3]) info(`URL: ${lines[3]}`);
-			return lines[1]; // app id
+		if (lines.length >= 5) {
+			pass(
+				`GitHub App found: ${lines[0]} (id: ${lines[1]}, client_id: ${lines[2]})`,
+			);
+			if (lines[4]) info(`URL: ${lines[4]}`);
+			return {
+				appId: lines[1],
+				clientId: lines[2],
+			};
 		}
 		fail(`GitHub App "${slug}" returned unexpected data`);
 		failures++;
@@ -228,7 +233,7 @@ if (convexVars.size > 0) {
 	check(
 		!!cvxClientId,
 		`GITHUB_CLIENT_ID is set in Convex (${cvxClientId?.slice(0, 8)}...)`,
-		"GITHUB_CLIENT_ID is MISSING in Convex — GitHub OAuth sign-in will fail",
+		"GITHUB_CLIENT_ID is MISSING in Convex — GitHub OAuth sign-in and installation token auth will fail",
 	);
 
 	const cvxClientSecret = convexVars.get("GITHUB_CLIENT_SECRET");
@@ -236,13 +241,6 @@ if (convexVars.size > 0) {
 		!!cvxClientSecret,
 		"GITHUB_CLIENT_SECRET is set in Convex",
 		"GITHUB_CLIENT_SECRET is MISSING in Convex — GitHub OAuth sign-in will fail",
-	);
-
-	const cvxAppId = convexVars.get("GITHUB_APP_ID");
-	check(
-		!!cvxAppId,
-		`GITHUB_APP_ID is set in Convex: ${cvxAppId}`,
-		"GITHUB_APP_ID is MISSING in Convex — installation token requests will fail (webhooks will not be able to sync repo data)",
 	);
 
 	const cvxPrivateKey = convexVars.get("GITHUB_APP_PRIVATE_KEY");
@@ -294,15 +292,15 @@ if (convexVars.size > 0) {
 heading("GitHub App");
 
 if (envAppSlug) {
-	const appId = await checkGitHubApp(envAppSlug);
+	const appInfo = await checkGitHubApp(envAppSlug);
 
-	// Cross-check app ID
-	const cvxAppId = convexVars.get("GITHUB_APP_ID");
-	if (appId && cvxAppId) {
+	// Cross-check client ID used by backend app JWT + OAuth config
+	const cvxClientId = convexVars.get("GITHUB_CLIENT_ID");
+	if (appInfo && cvxClientId) {
 		check(
-			appId === cvxAppId,
-			`GITHUB_APP_ID matches: local GitHub App ID (${appId}) = Convex env (${cvxAppId})`,
-			`GITHUB_APP_ID MISMATCH: GitHub reports ID ${appId} but Convex has ${cvxAppId}`,
+			appInfo.clientId === cvxClientId,
+			`GITHUB_CLIENT_ID matches GitHub App client ID (${appInfo.clientId})`,
+			`GITHUB_CLIENT_ID MISMATCH: GitHub App reports ${appInfo.clientId} but Convex has ${cvxClientId}`,
 		);
 	}
 

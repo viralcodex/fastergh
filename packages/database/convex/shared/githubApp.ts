@@ -30,7 +30,7 @@ export class GitHubAppTokenError extends Data.TaggedError(
  * @see https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app
  */
 const createAppJwt = (
-	appId: string,
+	appClientId: string,
 	privateKeyPem: string,
 ): Effect.Effect<string, GitHubAppTokenError> =>
 	Effect.tryPromise({
@@ -43,7 +43,7 @@ const createAppJwt = (
 			const payload = {
 				iat: now - 60,
 				exp: now + 10 * 60,
-				iss: appId,
+				iss: appClientId,
 			};
 
 			const encodeBase64Url = (data: string) => {
@@ -118,9 +118,11 @@ export const fetchInstallationToken = (
 	GitHubAppConfigMissing | GitHubAppTokenError
 > =>
 	Effect.gen(function* () {
-		const appId = process.env.GITHUB_APP_ID;
-		if (!appId) {
-			return yield* new GitHubAppConfigMissing({ field: "GITHUB_APP_ID" });
+		const appClientId = process.env.GITHUB_CLIENT_ID;
+		if (!appClientId) {
+			return yield* new GitHubAppConfigMissing({
+				field: "GITHUB_CLIENT_ID",
+			});
 		}
 
 		const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
@@ -130,7 +132,7 @@ export const fetchInstallationToken = (
 			});
 		}
 
-		const jwt = yield* createAppJwt(appId, privateKey);
+		const jwt = yield* createAppJwt(appClientId, privateKey);
 
 		const response = yield* Effect.tryPromise({
 			try: () =>
