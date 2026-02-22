@@ -11,21 +11,24 @@ import { Skeleton } from "@packages/ui/components/skeleton";
 import {
 	notifyQuickHubNavigation,
 	quickHubNavigateEvent,
+	quickHubPrefetchEvent,
 } from "@packages/ui/lib/spa-navigation";
 import { useCodeBrowse } from "@packages/ui/rpc/code-browse";
 import { getNotificationsClient } from "@packages/ui/rpc/notifications";
 import { getProjectionQueriesClient } from "@packages/ui/rpc/projection-queries";
 import { Option } from "effect";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	createBrowserRouter,
 	type LoaderFunctionArgs,
+	matchRoutes,
 	Navigate,
 	Outlet,
 	RouterProvider,
 	useLoaderData,
 	useLocation,
 	useNavigate,
+	useNavigation,
 } from "react-router";
 import { WorkflowRunDetailClient } from "@/app/(main-site)/@detail/[owner]/[name]/actions/[runNumber]/workflow-run-detail-client";
 import { FileViewerMonaco } from "@/app/(main-site)/@detail/[owner]/[name]/code/file-viewer-monaco";
@@ -990,11 +993,61 @@ function NotificationsRoute() {
 	);
 }
 
+function NavigationPendingOverlay() {
+	const navigation = useNavigation();
+	const [isVisible, setIsVisible] = useState(false);
+
+	useEffect(() => {
+		if (navigation.state === "idle") {
+			setIsVisible(false);
+			return;
+		}
+
+		const timeout = setTimeout(() => {
+			setIsVisible(true);
+		}, 120);
+
+		return () => {
+			clearTimeout(timeout);
+		};
+	}, [navigation.state]);
+
+	if (!isVisible) {
+		return null;
+	}
+
+	return (
+		<div className="pointer-events-none fixed inset-0 z-50 bg-background/55">
+			<div className="mx-auto flex h-full w-full max-w-[1600px] gap-3 px-3 py-3 md:px-4 md:py-4">
+				<div className="hidden md:block w-[18%] min-w-[13rem] rounded-lg border border-border/70 bg-card/80 p-3">
+					<div className="space-y-2">
+						<Skeleton className="h-8 w-full" />
+						<Skeleton className="h-7 w-full" />
+						<Skeleton className="h-7 w-full" />
+						<Skeleton className="h-7 w-full" />
+						<Skeleton className="h-7 w-full" />
+					</div>
+				</div>
+				<div className="min-w-0 flex-1 rounded-lg border border-border/70 bg-card/80 p-4">
+					<div className="space-y-3">
+						<Skeleton className="h-7 w-1/2" />
+						<Skeleton className="h-4 w-1/3" />
+						<Skeleton className="h-28 w-full" />
+						<Skeleton className="h-28 w-full" />
+						<Skeleton className="h-28 w-full" />
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function SpaRootRoute() {
 	return (
 		<>
 			<SpaNavigationBridge />
 			<Outlet />
+			<NavigationPendingOverlay />
 		</>
 	);
 }
@@ -1087,6 +1140,49 @@ const appRouter = createBrowserRouter([
 	},
 ]);
 
+const PREFETCH_TTL_MS = 20_000;
+const prefetchedRouteLoads = new Map<string, number>();
+
+const prefetchHref = (href: string) => {
+	if (typeof window === "undefined") {
+		return;
+	}
+
+	const url = new URL(href, window.location.origin);
+	if (url.origin !== window.location.origin) {
+		return;
+	}
+
+	const target = `${url.pathname}${url.search}`;
+	const routeMatches = matchRoutes(appRouter.routes, {
+		pathname: url.pathname,
+	});
+	if (routeMatches === null) {
+		return;
+	}
+
+	const now = Date.now();
+
+	for (const match of routeMatches) {
+		const route = match.route;
+		if (route.id === undefined || route.loader === undefined) {
+			continue;
+		}
+
+		const prefetchKey = `${target}:${route.id}`;
+		const lastPrefetchedAt = prefetchedRouteLoads.get(prefetchKey);
+		if (
+			lastPrefetchedAt !== undefined &&
+			now - lastPrefetchedAt < PREFETCH_TTL_MS
+		) {
+			continue;
+		}
+
+		prefetchedRouteLoads.set(prefetchKey, now);
+		void appRouter.fetch(`prefetch:${prefetchKey}`, route.id, target);
+	}
+};
+
 function SpaNavigationBridge() {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -1096,6 +1192,24 @@ function SpaNavigationBridge() {
 		if (typeof window === "undefined") {
 			return;
 		}
+
+		const onPrefetch: EventListener = (event) => {
+			if (!("detail" in event)) {
+				return;
+			}
+
+			const detail = event.detail;
+			if (typeof detail !== "object" || detail === null) {
+				return;
+			}
+
+			const href = Reflect.get(detail, "href");
+			if (typeof href !== "string") {
+				return;
+			}
+
+			prefetchHref(href);
+		};
 
 		const onNavigate: EventListener = (event) => {
 			if (!("detail" in event)) {
@@ -1115,8 +1229,10 @@ function SpaNavigationBridge() {
 			navigate(href);
 		};
 
+		window.addEventListener(quickHubPrefetchEvent, onPrefetch);
 		window.addEventListener(quickHubNavigateEvent, onNavigate);
 		return () => {
+			window.removeEventListener(quickHubPrefetchEvent, onPrefetch);
 			window.removeEventListener(quickHubNavigateEvent, onNavigate);
 		};
 	}, [navigate]);

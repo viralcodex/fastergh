@@ -2,6 +2,7 @@ const getBrowserWindow = (): Window | null =>
 	typeof window === "undefined" ? null : window;
 
 const QUICKHUB_NAVIGATE_EVENT = "quickhub:navigate";
+const QUICKHUB_PREFETCH_EVENT = "quickhub:prefetch";
 
 export const isQuickHubSpaNavigationEnabled = (): boolean => {
 	const currentWindow = getBrowserWindow();
@@ -39,3 +40,22 @@ export const navigateQuickHubSpa = (href: string) => {
 };
 
 export const quickHubNavigateEvent = QUICKHUB_NAVIGATE_EVENT;
+
+export const prefetchQuickHubSpa = (href: string) => {
+	const currentWindow = getBrowserWindow();
+	if (currentWindow === null) {
+		return;
+	}
+
+	if (!href.startsWith("/")) {
+		return;
+	}
+
+	currentWindow.dispatchEvent(
+		new CustomEvent(QUICKHUB_PREFETCH_EVENT, {
+			detail: { href },
+		}),
+	);
+};
+
+export const quickHubPrefetchEvent = QUICKHUB_PREFETCH_EVENT;

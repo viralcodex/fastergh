@@ -16,6 +16,7 @@ import { useCallback } from "react";
 import {
 	isQuickHubSpaNavigationEnabled,
 	navigateQuickHubSpa,
+	prefetchQuickHubSpa,
 } from "../lib/spa-navigation";
 import { Link } from "./link";
 import {
@@ -238,20 +239,14 @@ function CommandLinkItem({
 		onBeforeNavigate?.();
 		if (!isQuickHubSpaNavigationEnabled()) {
 			router.prefetch(href);
+		} else {
+			prefetchQuickHubSpa(href);
 		}
-		const prefetchPromise = Promise.resolve(
-			prefetchRequest({ href, intent: prefetchIntent }),
-		).catch(() => undefined);
+		void prefetchRequest({ href, intent: prefetchIntent });
 		// Keyboard Enter path — the Link overlay handles mouse interactions,
 		// but cmdk's onSelect fires for keyboard. Use router.push here.
 		if (isQuickHubSpaNavigationEnabled()) {
-			const warmupWindow = new Promise<void>((resolve) => {
-				setTimeout(resolve, 220);
-			});
-
-			void Promise.race([prefetchPromise, warmupWindow]).finally(() => {
-				navigateQuickHubSpa(href);
-			});
+			navigateQuickHubSpa(href);
 			return;
 		}
 		router.push(href);
