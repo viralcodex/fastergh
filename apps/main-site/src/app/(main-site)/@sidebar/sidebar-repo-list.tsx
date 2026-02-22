@@ -18,7 +18,6 @@ import { authClient } from "@packages/ui/lib/auth-client";
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { Array as Arr, Option, pipe, Record as Rec } from "effect";
-import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 import type { SidebarRepo } from "./sidebar-client";
 
@@ -30,14 +29,13 @@ const EmptyPayload: Record<string, never> = {};
  */
 export function SidebarRepoList({
 	initialRepos,
+	activeOwner = null,
+	activeName = null,
 }: {
 	initialRepos: ReadonlyArray<SidebarRepo>;
+	activeOwner?: string | null;
+	activeName?: string | null;
 }) {
-	const pathname = usePathname();
-	const segments = pathname.split("/").filter(Boolean);
-	const activeOwner = segments[0] ?? null;
-	const activeName = segments[1] ?? null;
-
 	const session = authClient.useSession();
 	const client = useProjectionQueries();
 	const reposAtom = useMemo(

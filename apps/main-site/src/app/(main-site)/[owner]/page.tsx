@@ -1,5 +1,15 @@
-// Children slot is hidden — the actual UI is rendered by @sidebar and @detail.
-// This page exists solely for route resolution at /:owner.
-export default function OrgPage() {
-	return null;
+import { MainSiteShell } from "../_components/main-site-shell";
+import { OrgDetail, OrgSidebar } from "../_components/route-shell-content";
+
+export default function OrgPage({
+	params,
+}: {
+	params: Promise<{ owner: string }>;
+}) {
+	return (
+		<MainSiteShell
+			sidebar={<OrgSidebar />}
+			detail={<OrgDetail params={params} />}
+		/>
+	);
 }

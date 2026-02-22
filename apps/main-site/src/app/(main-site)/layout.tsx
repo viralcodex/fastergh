@@ -1,6 +1,5 @@
 import { Providers } from "@packages/ui/components/providers";
 import type { Metadata } from "next";
-import { HubShell } from "./_components/hub-shell";
 
 export const metadata: Metadata = {
 	title: "QuickHub — GitHub Mirror",
@@ -9,17 +8,8 @@ export const metadata: Metadata = {
 
 export default function MainSiteLayout({
 	children,
-	sidebar,
-	detail,
 }: {
 	children: React.ReactNode;
-	sidebar: React.ReactNode;
-	detail: React.ReactNode;
 }) {
-	return (
-		<Providers>
-			<HubShell sidebar={sidebar} detail={detail} />
-			<div className="hidden">{children}</div>
-		</Providers>
-	);
+	return <Providers>{children}</Providers>;
 }

@@ -5,16 +5,27 @@ import { SidebarRepoList } from "../../../sidebar-repo-list";
 
 export default function IssueListDefault(props: {
 	params: Promise<{ owner: string; name: string }>;
+	activeIssueNumberPromise?: Promise<number | null>;
 }) {
-	return <Content paramsPromise={props.params} />;
+	return (
+		<Content
+			paramsPromise={props.params}
+			activeIssueNumberPromise={props.activeIssueNumberPromise}
+		/>
+	);
 }
 
 async function Content({
 	paramsPromise,
+	activeIssueNumberPromise,
 }: {
 	paramsPromise: Promise<{ owner: string; name: string }>;
+	activeIssueNumberPromise?: Promise<number | null>;
 }) {
 	const { owner, name } = await paramsPromise;
+	const activeIssueNumber = activeIssueNumberPromise
+		? await activeIssueNumberPromise
+		: null;
 	const initialRepos = await serverQueries.listRepos.queryPromise({});
 
 	if (!owner || !name || owner.length === 0 || name.length === 0) {
@@ -23,7 +34,11 @@ async function Content({
 
 	return (
 		<RepoListShell paramsPromise={paramsPromise} activeTab="issues">
-			<IssueListContent owner={owner} name={name} />
+			<IssueListContent
+				owner={owner}
+				name={name}
+				activeIssueNumber={activeIssueNumber ?? null}
+			/>
 		</RepoListShell>
 	);
 }
@@ -31,9 +46,11 @@ async function Content({
 async function IssueListContent({
 	owner,
 	name,
+	activeIssueNumber,
 }: {
 	owner: string;
 	name: string;
+	activeIssueNumber: number | null;
 }) {
 	const [initialData, overview] = await Promise.all([
 		serverQueries.listIssues
@@ -57,6 +74,7 @@ async function IssueListContent({
 			name={name}
 			initialData={initialData}
 			repositoryId={overview?.repositoryId ?? null}
+			activeIssueNumber={activeIssueNumber}
 		/>
 	);
 }

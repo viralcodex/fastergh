@@ -1,5 +1,6 @@
-// Root page — the hub layout (rendered in layout.tsx) handles display.
-// This page exists so the "/" route resolves.
+import { MainSiteShell } from "./_components/main-site-shell";
+import { RootDetail, RootSidebar } from "./_components/route-shell-content";
+
 export default function HomePage() {
-	return null;
+	return <MainSiteShell sidebar={<RootSidebar />} detail={<RootDetail />} />;
 }

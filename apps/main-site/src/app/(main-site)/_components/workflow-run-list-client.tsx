@@ -11,7 +11,6 @@ import { Skeleton } from "@packages/ui/components/skeleton";
 import { useInfinitePaginationWithInitial } from "@packages/ui/hooks/use-paginated-atom";
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
-import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 
 const PAGE_SIZE = 30;
@@ -37,10 +36,12 @@ export function WorkflowRunListClient({
 	owner,
 	name,
 	initialData = [],
+	activeRunNumber = null,
 }: {
 	owner: string;
 	name: string;
 	initialData?: ReadonlyArray<WorkflowRunItem>;
+	activeRunNumber?: number | null;
 }) {
 	const [statusFilter, setStatusFilter] = useState<
 		"all" | "in_progress" | "completed" | "failure"
@@ -73,6 +74,7 @@ export function WorkflowRunListClient({
 				name={name}
 				initialData={initialData}
 				statusFilter={statusFilter}
+				activeRunNumber={activeRunNumber}
 			/>
 		</div>
 	);
@@ -83,11 +85,13 @@ function WorkflowRunListLoaded({
 	name,
 	initialData,
 	statusFilter,
+	activeRunNumber,
 }: {
 	owner: string;
 	name: string;
 	initialData: ReadonlyArray<WorkflowRunItem>;
 	statusFilter: "all" | "in_progress" | "completed" | "failure";
+	activeRunNumber: number | null;
 }) {
 	const client = useProjectionQueries();
 	const paginatedAtom = useMemo(
@@ -125,12 +129,6 @@ function WorkflowRunListLoaded({
 				r.conclusion === "timed_out",
 		);
 	}, [allRuns, statusFilter]);
-
-	const pathname = usePathname();
-	const activeRunNumber = (() => {
-		const match = /\/actions\/runs\/(\d+)/.exec(pathname);
-		return match?.[1] ? Number.parseInt(match[1], 10) : null;
-	})();
 
 	return (
 		<>

@@ -15,7 +15,7 @@ import { useInfinitePaginationWithInitial } from "@packages/ui/hooks/use-paginat
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const PAGE_SIZE = 30;
@@ -46,11 +46,13 @@ export function IssueListClient({
 	name,
 	repositoryId: _repositoryId,
 	initialData = [],
+	activeIssueNumber = null,
 }: {
 	owner: string;
 	name: string;
 	repositoryId: number | null;
 	initialData?: ReadonlyArray<IssueItem>;
+	activeIssueNumber?: number | null;
 }) {
 	const [stateFilter, setStateFilter] = useState<"open" | "closed" | "all">(
 		"open",
@@ -75,12 +77,8 @@ export function IssueListClient({
 
 	const filteredIssues = useMemo(() => issues, [issues]);
 
-	const pathname = usePathname();
 	const router = useRouter();
-	const activeNumber = (() => {
-		const match = /\/issues\/(\d+)/.exec(pathname);
-		return match?.[1] ? Number.parseInt(match[1], 10) : null;
-	})();
+	const activeNumber = activeIssueNumber;
 
 	const activeIndex = filteredIssues.findIndex(
 		(issue) => issue.number === activeNumber,

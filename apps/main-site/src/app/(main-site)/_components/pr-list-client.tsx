@@ -9,7 +9,7 @@ import { useInfinitePaginationWithInitial } from "@packages/ui/hooks/use-paginat
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** Scroll the PR list item with the given number into view within its scroll container */
@@ -43,10 +43,12 @@ export function PrListClient({
 	owner,
 	name,
 	initialData = [],
+	activePullNumber = null,
 }: {
 	owner: string;
 	name: string;
 	initialData?: ReadonlyArray<PrItem>;
+	activePullNumber?: number | null;
 }) {
 	const [stateFilter, setStateFilter] = useState<"open" | "closed" | "all">(
 		"open",
@@ -71,12 +73,8 @@ export function PrListClient({
 
 	const filteredPrs = useMemo(() => prs, [prs]);
 
-	const pathname = usePathname();
 	const router = useRouter();
-	const activeNumber = (() => {
-		const match = /\/pull\/(\d+)/.exec(pathname);
-		return match?.[1] ? Number.parseInt(match[1], 10) : null;
-	})();
+	const activeNumber = activePullNumber;
 
 	// Find the index of the currently active PR for j/k navigation
 	const activeIndex = filteredPrs.findIndex((pr) => pr.number === activeNumber);
