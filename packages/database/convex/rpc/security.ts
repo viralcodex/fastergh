@@ -19,6 +19,10 @@ const RepoByNamePayloadSchema = Schema.Struct({
 	name: Schema.String,
 });
 
+const AdminTokenPayloadSchema = Schema.Struct({
+	adminToken: Schema.String,
+});
+
 const RepoInfoByNameSchema = Schema.Struct({
 	found: Schema.Boolean,
 	repositoryId: Schema.optional(Schema.Number),
@@ -67,6 +71,9 @@ const BooleanResponseSchema = Schema.Union(
 const decodeRepoByIdPayload = Schema.decodeUnknownEither(RepoByIdPayloadSchema);
 const decodeRepoByNamePayload = Schema.decodeUnknownEither(
 	RepoByNamePayloadSchema,
+);
+const decodeAdminTokenPayload = Schema.decodeUnknownEither(
+	AdminTokenPayloadSchema,
 );
 const decodeRepoInfoByNameResponse = Schema.decodeUnknownEither(
 	RepoInfoByNameResponseSchema,
@@ -157,9 +164,29 @@ type AuthenticatedUserValue = {
 	userId: string;
 };
 
+type VerifiedAdminTokenValue = {
+	verified: true;
+};
+
 export class AuthenticatedUser extends Context.Tag(
 	"@quickhub/AuthenticatedUser",
 )<AuthenticatedUser, AuthenticatedUserValue>() {}
+
+export class VerifiedAdminToken extends Context.Tag(
+	"@quickhub/VerifiedAdminToken",
+)<VerifiedAdminToken, VerifiedAdminTokenValue>() {}
+
+export class AdminAccessViolation extends Schema.TaggedError<AdminAccessViolation>()(
+	"AdminAccessViolation",
+	{
+		reason: Schema.Literal(
+			"missing_config",
+			"invalid_payload",
+			"invalid_token",
+		),
+		message: Schema.String,
+	},
+) {}
 
 export class RepoAccessViolation extends Schema.TaggedError<RepoAccessViolation>()(
 	"RepoAccessViolation",
@@ -687,11 +714,59 @@ const authorizeReadRepoById = (
 		};
 	});
 
+const authorizeAdminToken = (
+	options: MiddlewareOptions,
+): Effect.Effect<VerifiedAdminTokenValue, AdminAccessViolation> =>
+	Effect.gen(function* () {
+		const decodedPayload = decodeAdminTokenPayload(options.payload);
+		if (Either.isLeft(decodedPayload)) {
+			return yield* Effect.die(
+				new AdminAccessViolation({
+					reason: "invalid_payload",
+					message: "Expected payload to include adminToken",
+				}),
+			);
+		}
+
+		const configuredToken = process.env.BACKEND_ACCESS_TOKEN;
+		if (
+			configuredToken === undefined ||
+			configuredToken === "" ||
+			configuredToken === "generate-a-random-token-here"
+		) {
+			return yield* Effect.die(
+				new AdminAccessViolation({
+					reason: "missing_config",
+					message: "BACKEND_ACCESS_TOKEN is not configured",
+				}),
+			);
+		}
+
+		if (decodedPayload.right.adminToken !== configuredToken) {
+			return yield* Effect.die(
+				new AdminAccessViolation({
+					reason: "invalid_token",
+					message: "Invalid admin token",
+				}),
+			);
+		}
+
+		return { verified: true };
+	});
+
 export class RequireAuthenticatedMiddleware extends RpcMiddleware.Tag<RequireAuthenticatedMiddleware>()(
 	"RequireAuthenticatedMiddleware",
 	{
 		provides: AuthenticatedUser,
 		failure: RepoAccessViolation,
+	},
+) {}
+
+export class AdminTokenMiddleware extends RpcMiddleware.Tag<AdminTokenMiddleware>()(
+	"AdminTokenMiddleware",
+	{
+		provides: VerifiedAdminToken,
+		failure: AdminAccessViolation,
 	},
 ) {}
 
@@ -791,6 +866,9 @@ export class RepoAdminByNameMiddleware extends RpcMiddleware.Tag<RepoAdminByName
 
 export const DatabaseSecurityMiddlewareImplementations: ReadonlyArray<MiddlewareImplementation> =
 	[
+		middleware(AdminTokenMiddleware, (options: MiddlewareOptions) =>
+			authorizeAdminToken(options),
+		),
 		middleware(RequireAuthenticatedMiddleware, (options: MiddlewareOptions) =>
 			Effect.gen(function* () {
 				const userId = yield* resolveIdentityUserId(options);

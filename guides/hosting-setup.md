@@ -170,9 +170,10 @@ Make sure Vercel project env contains at least:
 
 ```bash
 cd packages/database
+# BACKEND_ACCESS_TOKEN must be set locally and in Convex env
 bunx convex run rpc/admin:queueHealth '{}'
-bunx convex run rpc/admin:systemStatus '{}'
-bunx convex run rpc/admin:tableCounts '{}'
+bunx convex run rpc/admin:systemStatus '{"adminToken":"'$BACKEND_ACCESS_TOKEN'"}'
+bunx convex run rpc/admin:tableCounts '{"adminToken":"'$BACKEND_ACCESS_TOKEN'"}'
 ```
 
 What good looks like:

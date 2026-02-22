@@ -249,6 +249,12 @@ export const parseSearchCommandQuery = (
 		? state.remaining.split(" ").filter((token) => token.length > 0)
 		: [];
 
+	const labels: Array<string> = [];
+	for (const label of state.labels) {
+		if (labels.includes(label)) continue;
+		labels.push(label);
+	}
+
 	return {
 		provider: state.provider,
 		target: state.target,
@@ -256,7 +262,7 @@ export const parseSearchCommandQuery = (
 		org: state.org,
 		author: state.author,
 		assignee: state.assignee,
-		labels: state.labels,
+		labels,
 		state: state.state,
 		updatedAfter: state.updatedAfter,
 		textTokens,

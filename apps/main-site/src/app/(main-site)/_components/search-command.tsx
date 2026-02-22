@@ -29,14 +29,21 @@ import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { Option } from "effect";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	buildCanonicalGitHubSearch,
 	parseSearchCommandQuery,
 	type SearchCommandQuery,
 } from "./search-command-dsl";
+import { OPEN_SEARCH_COMMAND_EVENT } from "./search-command-events";
+import {
+	mergeRankedResults,
+	type RankedResult,
+} from "./search-command-shift-prevention";
 import {
 	buildQueryChips,
+	getKeywordSuggestion,
+	InputSuggestionHint,
 	QueryBadgeRail,
 	renderFilterIcon,
 } from "./search-command-visuals";
@@ -239,6 +246,41 @@ function IconForKind({ kind }: { kind: NavigationKind }) {
 	return <Clock3 className="size-4 text-muted-foreground" />;
 }
 
+function ScopeIndicator({
+	repo,
+	org,
+	showClearHint,
+}: {
+	repo: { readonly owner: string; readonly name: string } | null;
+	org: string | null;
+	showClearHint: boolean;
+}) {
+	if (repo === null && org === null) return null;
+
+	return (
+		<div className="hidden sm:flex items-center gap-1.5 max-w-[18rem]">
+			<Badge
+				variant="secondary"
+				className="h-6 gap-1 px-2 font-mono text-[10px]"
+			>
+				<FileCode2 className="size-3 text-status-repo" />
+				{repo !== null ? (
+					<span className="truncate max-w-[11rem]">
+						{repo.owner}/{repo.name}
+					</span>
+				) : (
+					<span className="truncate max-w-[11rem]">org:{org}</span>
+				)}
+			</Badge>
+			{showClearHint && (
+				<CommandShortcut className="text-[10px] tracking-normal">
+					⌫ clear
+				</CommandShortcut>
+			)}
+		</div>
+	);
+}
+
 function RepoQuickActions({
 	repo,
 	onSelect,
@@ -382,12 +424,19 @@ function QuickNumberNavigation({
 
 function SearchResultRow({
 	item,
+	resultId,
 	repo,
 	onSelect,
+	onPointerIntent,
 }: {
 	item: SearchResultItem;
+	resultId: string;
 	repo: { readonly owner: string; readonly name: string };
 	onSelect: (target: NavigationTarget) => void;
+	onPointerIntent: (
+		resultId: string,
+		pointer: { readonly x: number; readonly y: number },
+	) => void;
 }) {
 	const kind: NavigationKind = item.type === "pr" ? "pr" : "issue";
 	const segment = item.type === "pr" ? "pull" : "issues";
@@ -402,6 +451,10 @@ function SearchResultRow({
 		<CommandItem
 			value={`${item.type} ${item.number} ${item.title} ${item.authorLogin ?? ""}`}
 			onSelect={() => onSelect(target)}
+			data-result-id={resultId}
+			onPointerMove={(event) =>
+				onPointerIntent(resultId, { x: event.clientX, y: event.clientY })
+			}
 		>
 			<IconForKind kind={kind} />
 			<div className="min-w-0 flex-1">
@@ -432,12 +485,22 @@ function SearchResults({
 	repo,
 	query,
 	onSelect,
+	focusedResultId,
+	onPointerIntent,
 }: {
 	repo: { readonly owner: string; readonly name: string };
 	query: SearchCommandQuery;
 	onSelect: (target: NavigationTarget) => void;
+	focusedResultId: string | null;
+	onPointerIntent: (
+		resultId: string,
+		pointer: { readonly x: number; readonly y: number },
+	) => void;
 }) {
 	const client = useProjectionQueries();
+	const [displayedResults, setDisplayedResults] = useState<
+		ReadonlyArray<RankedResult<SearchResultItem>>
+	>([]);
 	const searchText = query.textTokens.join(" ");
 	const searchAtom = useMemo(
 		() =>
@@ -471,7 +534,79 @@ function SearchResults({
 	);
 	const result = useAtomValue(searchAtom);
 
+	const incomingResults = useMemo(() => {
+		if (Result.isInitial(result)) return null;
+		const valueOption = Result.value(result);
+		if (Option.isNone(valueOption)) return [];
+
+		const deduped = new Map<string, RankedResult<SearchResultItem>>();
+		for (const item of valueOption.value) {
+			const itemId = `${item.type}-${item.number}`;
+			if (deduped.has(itemId)) continue;
+			deduped.set(itemId, { id: itemId, item });
+		}
+
+		return [...deduped.values()];
+	}, [result]);
+
+	useEffect(() => {
+		if (incomingResults === null) return;
+		setDisplayedResults((previous) =>
+			mergeRankedResults(previous, incomingResults, focusedResultId),
+		);
+	}, [incomingResults, focusedResultId]);
+
 	if (Result.isInitial(result)) {
+		if (displayedResults.length > 0) {
+			const stalePrs = displayedResults
+				.filter((entry) => entry.item.type === "pr")
+				.map((entry) => entry);
+			const staleIssues = displayedResults
+				.filter((entry) => entry.item.type === "issue")
+				.map((entry) => entry);
+
+			return (
+				<>
+					{stalePrs.length > 0 && (
+						<CommandGroup heading="Pull Requests">
+							{stalePrs.map((entry) => (
+								<SearchResultRow
+									key={entry.id}
+									item={entry.item}
+									resultId={entry.id}
+									repo={repo}
+									onSelect={onSelect}
+									onPointerIntent={onPointerIntent}
+								/>
+							))}
+						</CommandGroup>
+					)}
+					{staleIssues.length > 0 && (
+						<CommandGroup heading="Issues">
+							{staleIssues.map((entry) => (
+								<SearchResultRow
+									key={entry.id}
+									item={entry.item}
+									resultId={entry.id}
+									repo={repo}
+									onSelect={onSelect}
+									onPointerIntent={onPointerIntent}
+								/>
+							))}
+						</CommandGroup>
+					)}
+					<CommandGroup heading="Refreshing">
+						<CommandItem disabled value="refreshing results">
+							<Skeleton className="size-4 rounded shrink-0" />
+							<span className="text-xs text-muted-foreground">
+								Updating results without moving your selection...
+							</span>
+						</CommandItem>
+					</CommandGroup>
+				</>
+			);
+		}
+
 		return (
 			<div className="px-2 py-3 space-y-2">
 				{[1, 2, 3].map((i) => (
@@ -487,37 +622,39 @@ function SearchResults({
 		);
 	}
 
-	const valueOption = Result.value(result);
-	if (Option.isNone(valueOption)) return null;
+	if (displayedResults.length === 0) return null;
 
-	const items = valueOption.value;
-	if (items.length === 0) return null;
-
-	const prs = items.filter((item) => item.type === "pr");
-	const issues = items.filter((item) => item.type === "issue");
+	const prs = displayedResults.filter((entry) => entry.item.type === "pr");
+	const issues = displayedResults.filter(
+		(entry) => entry.item.type === "issue",
+	);
 
 	return (
 		<>
 			{prs.length > 0 && (
 				<CommandGroup heading="Pull Requests">
-					{prs.map((item) => (
+					{prs.map((entry) => (
 						<SearchResultRow
-							key={`pr-${item.number}`}
-							item={item}
+							key={entry.id}
+							item={entry.item}
+							resultId={entry.id}
 							repo={repo}
 							onSelect={onSelect}
+							onPointerIntent={onPointerIntent}
 						/>
 					))}
 				</CommandGroup>
 			)}
 			{issues.length > 0 && (
 				<CommandGroup heading="Issues">
-					{issues.map((item) => (
+					{issues.map((entry) => (
 						<SearchResultRow
-							key={`issue-${item.number}`}
-							item={item}
+							key={entry.id}
+							item={entry.item}
+							resultId={entry.id}
 							repo={repo}
 							onSelect={onSelect}
+							onPointerIntent={onPointerIntent}
 						/>
 					))}
 				</CommandGroup>
@@ -837,45 +974,88 @@ function QueryDslSummary({
 function GlobalQuickViews({
 	onSelect,
 	onGoToGitHub,
+	query,
 }: {
 	onSelect: (target: NavigationTarget) => void;
 	onGoToGitHub: () => void;
+	query?: string;
 }) {
+	const normalizedQuery = query?.trim().toLowerCase() ?? "";
+	const queryTokens =
+		normalizedQuery.length === 0 ? [] : normalizedQuery.split(/\s+/);
+
+	const matches = (text: string) => {
+		if (queryTokens.length === 0) return true;
+		const searchable = text.toLowerCase();
+		for (const token of queryTokens) {
+			if (!searchable.includes(token)) return false;
+		}
+		return true;
+	};
+
+	const showWorkbench = matches("open workbench dashboard home");
+	const showNotifications = matches("open notifications inbox queue updates");
+	const showGitHub = matches("go to github github.com repo source");
+
+	if (!showWorkbench && !showNotifications && !showGitHub) {
+		return null;
+	}
+
 	return (
 		<CommandGroup heading="Quick Views">
-			<CommandItem
-				value="view workbench"
-				onSelect={() =>
-					onSelect({
-						path: "/",
-						title: "Workbench",
-						subtitle: "Cross-repo attention dashboard",
-						kind: "global",
-					})
-				}
-			>
-				<Rocket className="size-4 text-muted-foreground" />
-				<span>Open Workbench</span>
-			</CommandItem>
-			<CommandItem
-				value="view notifications"
-				onSelect={() =>
-					onSelect({
-						path: "/notifications",
-						title: "Notifications",
-						subtitle: "Cross-repo notification queue",
-						kind: "global",
-					})
-				}
-			>
-				<Inbox className="size-4 text-muted-foreground" />
-				<span>Open Notifications</span>
-			</CommandItem>
-			<CommandItem value="go to github github.com" onSelect={onGoToGitHub}>
-				<GitHubIcon className="size-4 text-muted-foreground" />
-				<span>Go to GitHub</span>
-			</CommandItem>
+			{showWorkbench && (
+				<CommandItem
+					value="view workbench"
+					onSelect={() =>
+						onSelect({
+							path: "/",
+							title: "Workbench",
+							subtitle: "Cross-repo attention dashboard",
+							kind: "global",
+						})
+					}
+				>
+					<Rocket className="size-4 text-muted-foreground" />
+					<span>Open Workbench</span>
+				</CommandItem>
+			)}
+			{showNotifications && (
+				<CommandItem
+					value="view notifications"
+					onSelect={() =>
+						onSelect({
+							path: "/notifications",
+							title: "Notifications",
+							subtitle: "Cross-repo notification queue",
+							kind: "global",
+						})
+					}
+				>
+					<Inbox className="size-4 text-muted-foreground" />
+					<span>Open Notifications</span>
+				</CommandItem>
+			)}
+			{showGitHub && (
+				<CommandItem value="go to github github.com" onSelect={onGoToGitHub}>
+					<GitHubIcon className="size-4 text-muted-foreground" />
+					<span>Go to GitHub</span>
+				</CommandItem>
+			)}
 		</CommandGroup>
+	);
+}
+
+function isExactGoToGitHubQuery(rawQuery: string): boolean {
+	const normalized = rawQuery.trim().toLowerCase().replace(/\s+/g, " ");
+	if (normalized.length === 0) return false;
+
+	return (
+		normalized === "github" ||
+		normalized === "github.com" ||
+		normalized === "go github" ||
+		normalized === "go to github" ||
+		normalized === "open github" ||
+		normalized === "go to github.com"
 	);
 }
 
@@ -884,6 +1064,9 @@ export function SearchCommand() {
 	const [query, setQuery] = useState("");
 	const [recent, setRecent] =
 		useState<ReadonlyArray<RecentEntry>>(DEFAULT_RECENT);
+	const [repoScopeEnabled, setRepoScopeEnabled] = useState(true);
+	const [focusedResultId, setFocusedResultId] = useState<string | null>(null);
+	const lastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
 	const debouncedQuery = useDebouncedValue(query, 250);
 	const repo = useRepoFromPathname();
 	const pathname = usePathname();
@@ -895,8 +1078,21 @@ export function SearchCommand() {
 	});
 
 	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const onOpen = () => {
+			setOpen(true);
+		};
+		window.addEventListener(OPEN_SEARCH_COMMAND_EVENT, onOpen);
+		return () => {
+			window.removeEventListener(OPEN_SEARCH_COMMAND_EVENT, onOpen);
+		};
+	}, []);
+
+	useEffect(() => {
 		if (!open) {
 			setQuery("");
+			setRepoScopeEnabled(true);
+			setFocusedResultId(null);
 			return;
 		}
 		setRecent(getRecentEntries());
@@ -920,17 +1116,85 @@ export function SearchCommand() {
 		window.location.replace(`https://github.com${pathname}`);
 	}, [pathname]);
 
+	const syncFocusedResultFromDom = useCallback(() => {
+		if (typeof document === "undefined") return;
+		const selected = document.querySelector(
+			"[data-slot='command-item'][data-selected='true'][data-result-id]",
+		);
+		if (selected === null) {
+			setFocusedResultId(null);
+			return;
+		}
+		const selectedId = selected.getAttribute("data-result-id");
+		setFocusedResultId(selectedId);
+	}, []);
+
+	const onResultPointerIntent = useCallback(
+		(resultId: string, pointer: { readonly x: number; readonly y: number }) => {
+			const previousPointer = lastPointerPositionRef.current;
+			if (
+				previousPointer !== null &&
+				previousPointer.x === pointer.x &&
+				previousPointer.y === pointer.y
+			) {
+				return;
+			}
+			lastPointerPositionRef.current = { x: pointer.x, y: pointer.y };
+			setFocusedResultId(resultId);
+		},
+		[],
+	);
+
+	useEffect(() => {
+		if (!open) return;
+		const frame = window.requestAnimationFrame(() => {
+			syncFocusedResultFromDom();
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, [open, syncFocusedResultFromDom]);
+
+	const liveTrimmed = query.trim();
+	const liveParsedQuery = useMemo(
+		() => parseSearchCommandQuery(liveTrimmed),
+		[liveTrimmed],
+	);
+	const keywordSuggestion = useMemo(
+		() => getKeywordSuggestion(query, liveParsedQuery),
+		[query, liveParsedQuery],
+	);
+
 	const trimmed = debouncedQuery.trim();
+	const prioritizeGoToGitHub = isExactGoToGitHubQuery(trimmed);
 	const parsedQuery = useMemo(
 		() => parseSearchCommandQuery(trimmed),
 		[trimmed],
 	);
-	const effectiveRepo = parsedQuery.repo ?? repo;
-	const hasRepo = repo !== null;
+
+	const implicitRepoScope =
+		repo !== null &&
+		repoScopeEnabled &&
+		parsedQuery.repo === null &&
+		parsedQuery.org === null;
+	const effectiveRepo = parsedQuery.repo ?? (implicitRepoScope ? repo : null);
+	const hasRepoScope = effectiveRepo !== null;
 	const hasQuery = trimmed.length > 0;
 	const repoQueryText = parsedQuery.hasDsl
 		? parsedQuery.textTokens.join(" ")
 		: trimmed;
+
+	const liveImplicitRepoScope =
+		repo !== null &&
+		repoScopeEnabled &&
+		liveParsedQuery.repo === null &&
+		liveParsedQuery.org === null;
+	const liveScopeRepo =
+		liveParsedQuery.repo ?? (liveImplicitRepoScope ? repo : null);
+	const liveScopeOrg = liveScopeRepo === null ? liveParsedQuery.org : null;
+	const canClearImplicitScope =
+		repo !== null &&
+		repoScopeEnabled &&
+		liveParsedQuery.repo === null &&
+		liveParsedQuery.org === null;
 
 	return (
 		<CommandDialog
@@ -938,22 +1202,80 @@ export function SearchCommand() {
 			onOpenChange={setOpen}
 			title="QuickHub Command Palette"
 			description="Navigate, search issues and PRs, and run quick repo actions"
-			commandProps={{ shouldFilter: false }}
+			className="max-w-3xl border border-border/70 bg-card/95 shadow-2xl backdrop-blur-xl"
+			commandProps={{ shouldFilter: false, loop: true }}
 			showCloseButton={false}
 		>
 			<CommandInput
 				placeholder={
-					hasRepo
-						? `Search ${repo.owner}/${repo.name}...`
+					hasRepoScope && effectiveRepo !== null
+						? `Search ${effectiveRepo.owner}/${effectiveRepo.name}...`
 						: "Search repositories, then jump into work..."
 				}
 				value={query}
-				onValueChange={setQuery}
+				onValueChange={(nextQuery) => {
+					setQuery(nextQuery);
+					window.requestAnimationFrame(() => {
+						syncFocusedResultFromDom();
+					});
+				}}
+				leading={
+					<ScopeIndicator
+						repo={liveScopeRepo}
+						org={liveScopeOrg}
+						showClearHint={canClearImplicitScope && liveTrimmed.length === 0}
+					/>
+				}
+				trailing={<InputSuggestionHint suggestion={keywordSuggestion} />}
+				onKeyDown={(event) => {
+					if (event.key === "Tab" && keywordSuggestion !== null) {
+						event.preventDefault();
+						setQuery(keywordSuggestion.nextValue);
+						return;
+					}
+
+					if (
+						event.key === "Backspace" &&
+						liveTrimmed.length === 0 &&
+						canClearImplicitScope
+					) {
+						event.preventDefault();
+						setRepoScopeEnabled(false);
+					}
+				}}
 			/>
 			<QueryBadgeRail rawQuery={query} />
-			<CommandList>
-				{!hasRepo && !hasQuery && (
+			<CommandList
+				className="max-h-[68vh]"
+				onKeyDown={(event) => {
+					if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+						return;
+					}
+					window.requestAnimationFrame(() => {
+						syncFocusedResultFromDom();
+					});
+				}}
+			>
+				{!hasRepoScope && !hasQuery && (
 					<>
+						{repo !== null && !repoScopeEnabled && (
+							<>
+								<CommandGroup heading="Scope">
+									<CommandItem
+										value={`scope ${repo.owner}/${repo.name}`}
+										onSelect={() => {
+											setRepoScopeEnabled(true);
+										}}
+									>
+										<FileCode2 className="size-4 text-status-repo" />
+										<span>
+											Search in {repo.owner}/{repo.name}
+										</span>
+									</CommandItem>
+								</CommandGroup>
+								<CommandSeparator />
+							</>
+						)}
 						<GlobalQuickViews
 							onSelect={handleSelect}
 							onGoToGitHub={goToGitHub}
@@ -976,33 +1298,39 @@ export function SearchCommand() {
 					</>
 				)}
 
-				{!hasRepo && hasQuery && (
+				{!hasRepoScope && hasQuery && (
 					<>
-						<QueryDslSummary query={parsedQuery} repo={effectiveRepo} />
-						{parsedQuery.repo !== null && parsedQuery.target !== "repo" ? (
-							<SearchResults
-								repo={parsedQuery.repo}
-								query={parsedQuery}
+						{prioritizeGoToGitHub && (
+							<GlobalQuickViews
 								onSelect={handleSelect}
-							/>
-						) : (
-							<GlobalWorkResults
-								query={repoQueryText.length > 0 ? repoQueryText : trimmed}
-								onSelect={handleSelect}
+								onGoToGitHub={goToGitHub}
+								query={trimmed}
 							/>
 						)}
+						<QueryDslSummary query={parsedQuery} repo={effectiveRepo} />
+						<GlobalWorkResults
+							query={repoQueryText.length > 0 ? repoQueryText : trimmed}
+							onSelect={handleSelect}
+						/>
 						<RepoResults
 							query={repoQueryText}
 							org={parsedQuery.org ?? undefined}
 							onSelect={handleSelect}
 						/>
+						{!prioritizeGoToGitHub && (
+							<GlobalQuickViews
+								onSelect={handleSelect}
+								onGoToGitHub={goToGitHub}
+								query={trimmed}
+							/>
+						)}
 					</>
 				)}
 
-				{hasRepo && !hasQuery && (
+				{hasRepoScope && !hasQuery && effectiveRepo !== null && (
 					<>
 						<RepoQuickActions
-							repo={repo}
+							repo={effectiveRepo}
 							onSelect={handleSelect}
 							onGoToGitHub={goToGitHub}
 						/>
@@ -1017,19 +1345,28 @@ export function SearchCommand() {
 					</>
 				)}
 
-				{hasRepo && hasQuery && (
+				{hasRepoScope && hasQuery && effectiveRepo !== null && (
 					<>
+						{prioritizeGoToGitHub && (
+							<GlobalQuickViews
+								onSelect={handleSelect}
+								onGoToGitHub={goToGitHub}
+								query={trimmed}
+							/>
+						)}
 						<QueryDslSummary query={parsedQuery} repo={effectiveRepo} />
 						<QuickNumberNavigation
-							repo={repo}
+							repo={effectiveRepo}
 							query={trimmed}
 							onSelect={handleSelect}
 						/>
 						{parsedQuery.target !== "repo" && (
 							<SearchResults
-								repo={effectiveRepo ?? repo}
+								repo={effectiveRepo}
 								query={parsedQuery}
 								onSelect={handleSelect}
+								focusedResultId={focusedResultId}
+								onPointerIntent={onResultPointerIntent}
 							/>
 						)}
 						{(parsedQuery.target === "repo" || !parsedQuery.hasDsl) && (
@@ -1044,11 +1381,18 @@ export function SearchCommand() {
 								/>
 							</>
 						)}
+						{!prioritizeGoToGitHub && (
+							<GlobalQuickViews
+								onSelect={handleSelect}
+								onGoToGitHub={goToGitHub}
+								query={trimmed}
+							/>
+						)}
 					</>
 				)}
 
 				<CommandEmpty>
-					{hasRepo
+					{hasRepoScope
 						? hasQuery
 							? "No results found. Try `issues by elliot`, `prs label bug`, or `pr 123`."
 							: "Start typing to search pull requests and issues."

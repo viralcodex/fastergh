@@ -17,6 +17,7 @@ import {
 	GitBranch,
 	GitPullRequest,
 	MessageCircle,
+	Search,
 } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
 import { ScrollArea } from "@packages/ui/components/scroll-area";
@@ -27,6 +28,7 @@ import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { triggerOpenSearchCommand } from "../_components/search-command-events";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -263,6 +265,7 @@ export function CommandPaletteClient({
 			repos={data.repos}
 			prs={allPrs}
 			issues={data.recentIssues}
+			scopeOwnerLogin={query.ownerLogin ?? null}
 		/>
 	);
 }
@@ -271,10 +274,12 @@ function DashboardCommandPalette({
 	repos,
 	prs,
 	issues,
+	scopeOwnerLogin,
 }: {
 	repos: ReadonlyArray<RepoSummary>;
 	prs: ReadonlyArray<DashboardPrItem>;
 	issues: ReadonlyArray<DashboardIssueItem>;
+	scopeOwnerLogin: string | null;
 }) {
 	const [query, setQuery] = useState("");
 	const router = useRouter();
@@ -342,92 +347,122 @@ function DashboardCommandPalette({
 		[router],
 	);
 
+	const scopeLabel =
+		scopeOwnerLogin === null ? "all" : `org:${scopeOwnerLogin}`;
+
 	return (
-		<Command
-			shouldFilter={false}
-			className="rounded-lg border border-border/60 bg-card/60 shadow-sm backdrop-blur-sm"
-		>
-			<CommandInput
-				ref={inputRef}
-				placeholder="Jump to a repository, pull request, or issue..."
-				value={query}
-				onValueChange={setQuery}
-			/>
-			{normalizedQuery.length > 0 && (
-				<CommandList className="max-h-[260px]">
-					{!hasResults && (
-						<CommandEmpty>No results for &ldquo;{query}&rdquo;</CommandEmpty>
-					)}
-					{filteredRepos.length > 0 && (
-						<CommandGroup heading="Repositories">
-							{filteredRepos.map((repo) => (
-								<CommandItem
-									key={repo.fullName}
-									value={repo.fullName}
-									onSelect={() =>
-										handleSelect(`/${repo.ownerLogin}/${repo.name}`)
-									}
-								>
-									<GitBranch className="size-3.5 text-muted-foreground" />
-									<span className="flex-1 truncate text-sm">
-										{repo.fullName}
-									</span>
-									<span className="font-mono text-[10px] text-muted-foreground/60">
-										{repo.openPrCount} PRs &middot; {repo.openIssueCount} issues
-									</span>
-								</CommandItem>
-							))}
-						</CommandGroup>
-					)}
-					{filteredPrs.length > 0 && (
-						<CommandGroup heading="Pull Requests">
-							{filteredPrs.map((pr) => (
-								<CommandItem
-									key={`${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
-									value={`pr-${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
-									onSelect={() =>
-										handleSelect(
-											`/${pr.ownerLogin}/${pr.repoName}/pull/${pr.number}`,
-										)
-									}
-								>
-									<GitPullRequest className="size-3.5 text-status-open" />
-									<div className="min-w-0 flex-1">
-										<span className="truncate text-sm">{pr.title}</span>
-										<span className="ml-2 font-mono text-[10px] text-muted-foreground/60">
-											{pr.ownerLogin}/{pr.repoName} #{pr.number}
+		<>
+			<Button
+				variant="outline"
+				className="md:hidden h-12 w-full items-center justify-start gap-2 rounded-xl border-border/70 bg-card/70 px-3 text-left shadow-sm"
+				onClick={() => {
+					triggerOpenSearchCommand();
+				}}
+			>
+				<Search className="size-4 shrink-0 text-muted-foreground" />
+				<div className="min-w-0 flex-1">
+					<div className="truncate text-[13px] font-medium text-foreground">
+						Search QuickHub
+					</div>
+					<div className="truncate text-[11px] text-muted-foreground">
+						Repos, pull requests, issues, and actions
+					</div>
+				</div>
+				<Badge
+					variant="secondary"
+					className="h-5 shrink-0 px-1.5 font-mono text-[10px]"
+				>
+					{scopeLabel}
+				</Badge>
+			</Button>
+
+			<Command
+				shouldFilter={false}
+				className="hidden md:flex rounded-lg border border-border/60 bg-card/60 shadow-sm backdrop-blur-sm"
+			>
+				<CommandInput
+					ref={inputRef}
+					placeholder="Jump to a repository, pull request, or issue..."
+					value={query}
+					onValueChange={setQuery}
+				/>
+				{normalizedQuery.length > 0 && (
+					<CommandList className="max-h-[260px]">
+						{!hasResults && (
+							<CommandEmpty>No results for &ldquo;{query}&rdquo;</CommandEmpty>
+						)}
+						{filteredRepos.length > 0 && (
+							<CommandGroup heading="Repositories">
+								{filteredRepos.map((repo) => (
+									<CommandItem
+										key={repo.fullName}
+										value={repo.fullName}
+										onSelect={() =>
+											handleSelect(`/${repo.ownerLogin}/${repo.name}`)
+										}
+									>
+										<GitBranch className="size-3.5 text-muted-foreground" />
+										<span className="flex-1 truncate text-sm">
+											{repo.fullName}
 										</span>
-									</div>
-								</CommandItem>
-							))}
-						</CommandGroup>
-					)}
-					{filteredIssues.length > 0 && (
-						<CommandGroup heading="Issues">
-							{filteredIssues.map((issue) => (
-								<CommandItem
-									key={`${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
-									value={`issue-${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
-									onSelect={() =>
-										handleSelect(
-											`/${issue.ownerLogin}/${issue.repoName}/issues/${issue.number}`,
-										)
-									}
-								>
-									<CircleDot className="size-3.5 text-status-open" />
-									<div className="min-w-0 flex-1">
-										<span className="truncate text-sm">{issue.title}</span>
-										<span className="ml-2 font-mono text-[10px] text-muted-foreground/60">
-											{issue.ownerLogin}/{issue.repoName} #{issue.number}
+										<span className="font-mono text-[10px] text-muted-foreground/60">
+											{repo.openPrCount} PRs &middot; {repo.openIssueCount}{" "}
+											issues
 										</span>
-									</div>
-								</CommandItem>
-							))}
-						</CommandGroup>
-					)}
-				</CommandList>
-			)}
-		</Command>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+						{filteredPrs.length > 0 && (
+							<CommandGroup heading="Pull Requests">
+								{filteredPrs.map((pr) => (
+									<CommandItem
+										key={`${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
+										value={`pr-${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
+										onSelect={() =>
+											handleSelect(
+												`/${pr.ownerLogin}/${pr.repoName}/pull/${pr.number}`,
+											)
+										}
+									>
+										<GitPullRequest className="size-3.5 text-status-open" />
+										<div className="min-w-0 flex-1">
+											<span className="truncate text-sm">{pr.title}</span>
+											<span className="ml-2 font-mono text-[10px] text-muted-foreground/60">
+												{pr.ownerLogin}/{pr.repoName} #{pr.number}
+											</span>
+										</div>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+						{filteredIssues.length > 0 && (
+							<CommandGroup heading="Issues">
+								{filteredIssues.map((issue) => (
+									<CommandItem
+										key={`${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
+										value={`issue-${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
+										onSelect={() =>
+											handleSelect(
+												`/${issue.ownerLogin}/${issue.repoName}/issues/${issue.number}`,
+											)
+										}
+									>
+										<CircleDot className="size-3.5 text-status-open" />
+										<div className="min-w-0 flex-1">
+											<span className="truncate text-sm">{issue.title}</span>
+											<span className="ml-2 font-mono text-[10px] text-muted-foreground/60">
+												{issue.ownerLogin}/{issue.repoName} #{issue.number}
+											</span>
+										</div>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+					</CommandList>
+				)}
+			</Command>
+		</>
 	);
 }
 

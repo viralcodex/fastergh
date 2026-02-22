@@ -522,7 +522,8 @@ export const confectSchema = defineSchema({
 	github_sync_jobs: defineTable(GitHubSyncJobSchema)
 		.index("by_lockKey", ["lockKey"])
 		.index("by_state_and_nextRunAt", ["state", "nextRunAt"])
-		.index("by_scopeType_and_installationId", ["scopeType", "installationId"]),
+		.index("by_scopeType_and_installationId", ["scopeType", "installationId"])
+		.index("by_installationId_and_state", ["installationId", "state"]),
 
 	github_sync_cursors: defineTable(GitHubSyncCursorSchema).index(
 		"by_cursorKey",

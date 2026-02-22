@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@packages/ui/components/button";
+import { Search } from "@packages/ui/components/icons";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { UserButton } from "@packages/ui/components/user-button";
 import { GitHubIcon } from "@packages/ui/icons/index";
@@ -9,6 +10,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { InstallGitHubAppButton } from "../_components/install-github-app-button";
 import { RepoNavSelector } from "../_components/repo-nav-selector";
+import { triggerOpenSearchCommand } from "../_components/search-command-events";
 
 export type SidebarRepo = {
 	repositoryId: number;
@@ -62,6 +64,24 @@ export function SidebarClient({
 					/>
 				</div>
 			)}
+
+			{/* Mobile search trigger — opens full desktop-style command palette */}
+			<div className="md:hidden shrink-0 border-b border-sidebar-border px-2 py-2">
+				<Button
+					variant="outline"
+					className="h-9 w-full items-center justify-start gap-2 rounded-lg border-sidebar-border bg-background/70 px-2.5 text-left"
+					onClick={() => {
+						triggerOpenSearchCommand();
+					}}
+				>
+					<Search className="size-3.5 shrink-0 text-muted-foreground" />
+					<div className="min-w-0 flex-1">
+						<div className="truncate text-[12px] font-medium text-foreground">
+							Search QuickHub
+						</div>
+					</div>
+				</Button>
+			</div>
 
 			{/* Body — swapped per route */}
 			<div className="flex-1 overflow-y-auto">{children}</div>

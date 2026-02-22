@@ -9,6 +9,7 @@ import {
 	webhooksByState,
 } from "../shared/aggregates";
 import { DatabaseRpcModuleMiddlewares } from "./moduleMiddlewares";
+import { AdminTokenMiddleware } from "./security";
 
 const factory = createRpcFactory({ schema: confectSchema });
 
@@ -16,42 +17,57 @@ const factory = createRpcFactory({ schema: confectSchema });
 // Endpoint definitions (schema only — no handler bodies)
 // ---------------------------------------------------------------------------
 
-const healthCheckDef = factory.query({
-	success: Schema.Struct({
-		ok: Schema.Boolean,
-		tableCount: Schema.Number,
-	}),
-});
-
-const tableCountsDef = factory.query({
-	success: Schema.Struct({
-		repositories: Schema.Number,
-		branches: Schema.Number,
-		commits: Schema.Number,
-		pullRequests: Schema.Number,
-		pullRequestReviews: Schema.Number,
-		issues: Schema.Number,
-		issueComments: Schema.Number,
-		checkRuns: Schema.Number,
-		users: Schema.Number,
-		syncJobs: Schema.Number,
-		installations: Schema.Number,
-		webhookEvents: Schema.Number,
-	}),
-});
-
-const syncJobStatusDef = factory.query({
-	success: Schema.Array(
-		Schema.Struct({
-			lockKey: Schema.String,
-			state: Schema.String,
-			attemptCount: Schema.Number,
-			lastError: Schema.NullOr(Schema.String),
-			jobType: Schema.String,
-			triggerReason: Schema.String,
+const healthCheckDef = factory
+	.query({
+		payload: {
+			adminToken: Schema.String,
+		},
+		success: Schema.Struct({
+			ok: Schema.Boolean,
+			tableCount: Schema.Number,
 		}),
-	),
-});
+	})
+	.middleware(AdminTokenMiddleware);
+
+const tableCountsDef = factory
+	.query({
+		payload: {
+			adminToken: Schema.String,
+		},
+		success: Schema.Struct({
+			repositories: Schema.Number,
+			branches: Schema.Number,
+			commits: Schema.Number,
+			pullRequests: Schema.Number,
+			pullRequestReviews: Schema.Number,
+			issues: Schema.Number,
+			issueComments: Schema.Number,
+			checkRuns: Schema.Number,
+			users: Schema.Number,
+			syncJobs: Schema.Number,
+			installations: Schema.Number,
+			webhookEvents: Schema.Number,
+		}),
+	})
+	.middleware(AdminTokenMiddleware);
+
+const syncJobStatusDef = factory
+	.query({
+		payload: {
+			adminToken: Schema.String,
+		},
+		success: Schema.Array(
+			Schema.Struct({
+				lockKey: Schema.String,
+				state: Schema.String,
+				attemptCount: Schema.Number,
+				lastError: Schema.NullOr(Schema.String),
+				jobType: Schema.String,
+				triggerReason: Schema.String,
+			}),
+		),
+	})
+	.middleware(AdminTokenMiddleware);
 
 const listDeadLettersDef = factory.internalQuery({
 	payload: {
@@ -100,45 +116,50 @@ const queueHealthDef = factory.internalQuery({
  * Includes queue health, processing lag, write op summary,
  * and stale projection detection.
  */
-const systemStatusDef = factory.query({
-	success: Schema.Struct({
-		queue: Schema.Struct({
-			pending: Schema.Number,
-			retry: Schema.Number,
-			failed: Schema.Number,
-			deadLetters: Schema.Number,
-			recentProcessedLastHour: Schema.Number,
+const systemStatusDef = factory
+	.query({
+		payload: {
+			adminToken: Schema.String,
+		},
+		success: Schema.Struct({
+			queue: Schema.Struct({
+				pending: Schema.Number,
+				retry: Schema.Number,
+				failed: Schema.Number,
+				deadLetters: Schema.Number,
+				recentProcessedLastHour: Schema.Number,
+			}),
+			processing: Schema.Struct({
+				/** Average lag in ms from receivedAt to now for pending events */
+				avgPendingLagMs: Schema.NullOr(Schema.Number),
+				/** Oldest pending event age in ms */
+				maxPendingLagMs: Schema.NullOr(Schema.Number),
+				/** Number of events stuck in retry > 5 minutes */
+				staleRetryCount: Schema.Number,
+			}),
+			writeOps: Schema.Struct({
+				pending: Schema.Number,
+				completed: Schema.Number,
+				failed: Schema.Number,
+				confirmed: Schema.Number,
+			}),
+			projections: Schema.Struct({
+				/** Number of repos with overview projection */
+				overviewCount: Schema.Number,
+				/** Number of connected repos */
+				repoCount: Schema.Number,
+				/** True if every repo has an overview projection */
+				allSynced: Schema.Boolean,
+			}),
 		}),
-		processing: Schema.Struct({
-			/** Average lag in ms from receivedAt to now for pending events */
-			avgPendingLagMs: Schema.NullOr(Schema.Number),
-			/** Oldest pending event age in ms */
-			maxPendingLagMs: Schema.NullOr(Schema.Number),
-			/** Number of events stuck in retry > 5 minutes */
-			staleRetryCount: Schema.Number,
-		}),
-		writeOps: Schema.Struct({
-			pending: Schema.Number,
-			completed: Schema.Number,
-			failed: Schema.Number,
-			confirmed: Schema.Number,
-		}),
-		projections: Schema.Struct({
-			/** Number of repos with overview projection */
-			overviewCount: Schema.Number,
-			/** Number of connected repos */
-			repoCount: Schema.Number,
-			/** True if every repo has an overview projection */
-			allSynced: Schema.Boolean,
-		}),
-	}),
-});
+	})
+	.middleware(AdminTokenMiddleware);
 
 // ---------------------------------------------------------------------------
 // Implementations
 // ---------------------------------------------------------------------------
 
-healthCheckDef.implement(() =>
+healthCheckDef.implement((_args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
 		const repos = yield* ctx.db.query("github_repositories").take(1);
@@ -149,7 +170,7 @@ healthCheckDef.implement(() =>
 	}),
 );
 
-tableCountsDef.implement(() =>
+tableCountsDef.implement((_args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
 		const raw = ctx.rawCtx;
@@ -231,7 +252,7 @@ tableCountsDef.implement(() =>
 	}),
 );
 
-syncJobStatusDef.implement(() =>
+syncJobStatusDef.implement((_args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
 		const jobs = yield* ctx.db.query("github_sync_jobs").collect();
@@ -301,7 +322,7 @@ queueHealthDef.implement(() =>
 	}),
 );
 
-systemStatusDef.implement(() =>
+systemStatusDef.implement((_args) =>
 	Effect.gen(function* () {
 		const ctx = yield* ConfectQueryCtx;
 		const raw = ctx.rawCtx;

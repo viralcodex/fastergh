@@ -75,4 +75,12 @@ describe("parseSearchCommandQuery", () => {
 		expect(canonical).toContain("updated:>=2026-01-22");
 		expect(canonical).toContain("repo:quickhub/quickhub");
 	});
+
+	it("deduplicates repeated label filters", () => {
+		const parsed = parseSearchCommandQuery(
+			"issues label bug tag bug label help-wanted",
+		);
+
+		expect(parsed.labels).toEqual(["bug", "help-wanted"]);
+	});
 });

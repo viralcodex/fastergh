@@ -279,10 +279,29 @@ export const bootstrapRepo = workflow.define({
 });
 
 // ---------------------------------------------------------------------------
+// Per-installation concurrency gating.
+//
+// GitHub rate-limits installation tokens to 5,000 req/hr. To avoid one large
+// installation starving others (or blowing through its rate limit), we cap
+// how many bootstrap workflows run concurrently per installation.
+// ---------------------------------------------------------------------------
+
+/**
+ * Max concurrent bootstrap workflows per GitHub installation.
+ * With ~5-10 API calls per step and 9 steps, a repo uses ~50-100 requests.
+ * At 10 parallel, that's 500-1,000 req burst — well within the 5k/hr limit.
+ */
+const MAX_PER_INSTALLATION = 10;
+
+// ---------------------------------------------------------------------------
 // startBootstrap — Called from Confect mutations to kick off the workflow.
 //
 // This is a vanilla Convex internalMutation so it has access to the raw
 // MutationCtx needed by `workflow.start()`.
+//
+// If the installation is already at its concurrency cap, the sync job stays
+// in "pending" state. When a workflow completes, `onBootstrapComplete` drains
+// the next pending job for that installation.
 // ---------------------------------------------------------------------------
 
 export const startBootstrap = internalMutation({
@@ -295,6 +314,31 @@ export const startBootstrap = internalMutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, args): Promise<null> => {
+		// Count how many workflows are already running for this installation
+		const runningJobs = await ctx.db
+			.query("github_sync_jobs")
+			.withIndex("by_installationId_and_state", (q) =>
+				q.eq("installationId", args.installationId).eq("state", "running"),
+			)
+			.take(MAX_PER_INSTALLATION + 1);
+
+		if (runningJobs.length >= MAX_PER_INSTALLATION) {
+			// At capacity — leave job as "pending", it will be drained later
+			return null;
+		}
+
+		// Mark job as running before starting the workflow
+		const job = await ctx.db
+			.query("github_sync_jobs")
+			.withIndex("by_lockKey", (q) => q.eq("lockKey", args.lockKey))
+			.first();
+		if (job && job.state === "pending") {
+			await ctx.db.patch(job._id, {
+				state: "running",
+				updatedAt: Date.now(),
+			});
+		}
+
 		await workflow.start(
 			ctx,
 			internal.rpc.bootstrapWorkflow.bootstrapRepo,
@@ -307,7 +351,10 @@ export const startBootstrap = internalMutation({
 			},
 			{
 				onComplete: internal.rpc.bootstrapWorkflow.onBootstrapComplete,
-				context: { lockKey: args.lockKey },
+				context: {
+					lockKey: args.lockKey,
+					installationId: args.installationId,
+				},
 			},
 		);
 		return null;
@@ -335,6 +382,23 @@ export const onBootstrapComplete = internalMutation({
 			"lockKey" in args.context
 				? String(args.context.lockKey)
 				: null;
+
+		// Extract installationId from context (new workflows) or lockKey (legacy)
+		let installationId: number | null =
+			args.context &&
+			typeof args.context === "object" &&
+			"installationId" in args.context
+				? Number(args.context.installationId)
+				: null;
+
+		if (installationId === null && lockKey) {
+			// lockKey format: "repo-bootstrap:<installationId>:<repoId>"
+			const parts = lockKey.split(":");
+			if (parts.length >= 2) {
+				const parsed = Number(parts[1]);
+				if (!Number.isNaN(parsed)) installationId = parsed;
+			}
+		}
 
 		if (!lockKey) return null;
 
@@ -370,6 +434,59 @@ export const onBootstrapComplete = internalMutation({
 			}
 		}
 
+		// Drain: kick the next pending job for this installation (if any)
+		if (installationId !== null) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.rpc.bootstrapWorkflow.drainPendingForInstallation,
+				{ installationId },
+			);
+		}
+
+		return null;
+	},
+});
+
+/**
+ * Drain the next pending sync job for the given installation.
+ * Schedules `startBootstrap` which does its own concurrency check before
+ * actually starting the workflow.
+ */
+export const drainPendingForInstallation = internalMutation({
+	args: { installationId: v.number() },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const pendingJob = await ctx.db
+			.query("github_sync_jobs")
+			.withIndex("by_installationId_and_state", (q) =>
+				q.eq("installationId", args.installationId).eq("state", "pending"),
+			)
+			.first();
+
+		if (!pendingJob || pendingJob.repositoryId === null) return null;
+
+		// Look up the repo to get fullName and connectedByUserId
+		const repo = await ctx.db
+			.query("github_repositories")
+			.withIndex("by_githubRepoId", (q) =>
+				q.eq("githubRepoId", pendingJob.repositoryId!),
+			)
+			.first();
+
+		if (!repo) return null;
+
+		// Schedule startBootstrap (which will do its own concurrency check)
+		await ctx.scheduler.runAfter(
+			0,
+			internal.rpc.bootstrapWorkflow.startBootstrap,
+			{
+				repositoryId: repo.githubRepoId,
+				fullName: repo.fullName,
+				lockKey: pendingJob.lockKey,
+				connectedByUserId: repo.connectedByUserId ?? null,
+				installationId: args.installationId,
+			},
+		);
 		return null;
 	},
 });
