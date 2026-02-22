@@ -1,5 +1,4 @@
 import { Play } from "@packages/ui/components/icons";
-import { Suspense } from "react";
 import { SyncProgressOverlay } from "../../../../_components/sync-progress-client";
 
 export default function ActionsDetailDefault({
@@ -7,11 +6,7 @@ export default function ActionsDetailDefault({
 }: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
-	return (
-		<Suspense>
-			<ActionsDetailContent paramsPromise={params} />
-		</Suspense>
-	);
+	return <ActionsDetailContent paramsPromise={params} />;
 }
 
 async function ActionsDetailContent({

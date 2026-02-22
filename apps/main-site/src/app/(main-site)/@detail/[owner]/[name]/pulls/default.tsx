@@ -1,5 +1,4 @@
 import { GitPullRequest } from "@packages/ui/components/icons";
-import { Suspense } from "react";
 import { SyncProgressOverlay } from "../../../../_components/sync-progress-client";
 
 export default function PullsDetailDefault({
@@ -7,11 +6,7 @@ export default function PullsDetailDefault({
 }: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
-	return (
-		<Suspense>
-			<PullsDetailContent paramsPromise={params} />
-		</Suspense>
-	);
+	return <PullsDetailContent paramsPromise={params} />;
 }
 
 async function PullsDetailContent({

@@ -6,8 +6,7 @@ import {
 } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
 import { cn } from "@packages/ui/lib/utils";
-import { type ReactNode, Suspense } from "react";
-import { ListSkeleton } from "./skeletons";
+import type { ReactNode } from "react";
 
 type RepoTab = "pulls" | "issues" | "actions" | "code";
 
@@ -84,7 +83,7 @@ export async function RepoListShell({
 					</Link>
 				</div>
 			</div>
-			<Suspense fallback={<ListSkeleton />}>{children}</Suspense>
+			{children}
 		</>
 	);
 }

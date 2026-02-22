@@ -1,18 +1,12 @@
 import { api } from "@packages/database/convex/_generated/api";
-import { Suspense } from "react";
 import { fetchAuthMutation } from "@/lib/auth-server";
 import { serverQueries } from "@/lib/server-queries";
-import { PrDetailSkeleton } from "../../../../../_components/skeletons";
 import { PrDetailClient } from "../../pulls/[number]/pr-detail-client";
 
 export default function PrDetailSlot(props: {
 	params: Promise<{ owner: string; name: string; number: string }>;
 }) {
-	return (
-		<Suspense fallback={<PrDetailSkeleton />}>
-			<PrDetailContent paramsPromise={props.params} />
-		</Suspense>
-	);
+	return <PrDetailContent paramsPromise={props.params} />;
 }
 
 async function PrDetailContent({

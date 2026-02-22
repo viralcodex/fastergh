@@ -1,16 +1,10 @@
-import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
-import { IssueDetailSkeleton } from "../../../../../_components/skeletons";
 import { IssueDetailClient } from "./issue-detail-client";
 
 export default function IssueDetailSlot(props: {
 	params: Promise<{ owner: string; name: string; number: string }>;
 }) {
-	return (
-		<Suspense fallback={<IssueDetailSkeleton />}>
-			<IssueDetailContent paramsPromise={props.params} />
-		</Suspense>
-	);
+	return <IssueDetailContent paramsPromise={props.params} />;
 }
 
 async function IssueDetailContent({

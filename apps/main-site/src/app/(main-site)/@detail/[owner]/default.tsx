@@ -1,5 +1,4 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { connection } from "next/server";
 import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import type { DashboardData } from "../home-dashboard-client";
@@ -13,16 +12,12 @@ import {
 
 /**
  * Detail panel for the org overview page (/:owner).
- * Sync parent renders immediately; async child resolves params inside Suspense.
+ * Static shell renders immediately; data sections suspend independently.
  */
 export default function OrgDetailDefault(props: {
 	params: Promise<{ owner: string }>;
 }) {
-	return (
-		<Suspense fallback={<OrgDashboardSkeleton />}>
-			<OrgDetailContent paramsPromise={props.params} />
-		</Suspense>
-	);
+	return <OrgDetailContent paramsPromise={props.params} />;
 }
 
 async function OrgDetailContent({
@@ -67,7 +62,6 @@ async function OrgDetailContent({
 // ---------------------------------------------------------------------------
 
 async function fetchOrgDashboard(owner: string): Promise<DashboardData> {
-	await connection();
 	return serverQueries.getHomeDashboard.queryPromise({ ownerLogin: owner });
 }
 
@@ -93,27 +87,6 @@ async function OrgIssuesColumnSection({ owner }: { owner: string }) {
 async function OrgReposColumnSection({ owner }: { owner: string }) {
 	const data = await fetchOrgDashboard(owner);
 	return <ReposColumnClient initialData={data} query={{ ownerLogin: owner }} />;
-}
-
-// ---------------------------------------------------------------------------
-// Skeletons
-// ---------------------------------------------------------------------------
-
-function OrgDashboardSkeleton() {
-	return (
-		<div className="h-full overflow-y-auto bg-dotgrid">
-			<div className="mx-auto max-w-[1600px] px-4 py-4 md:px-6 md:py-5">
-				<div className="mb-4">
-					<Skeleton className="h-10 w-full rounded-lg" />
-				</div>
-				<div className="grid gap-4 lg:grid-cols-3">
-					<ColumnSkeleton />
-					<ColumnSkeleton />
-					<ColumnSkeleton />
-				</div>
-			</div>
-		</div>
-	);
 }
 
 function ColumnSkeleton() {

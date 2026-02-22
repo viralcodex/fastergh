@@ -1,5 +1,4 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { connection } from "next/server";
 import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { SyncProgressOverlay } from "../../../_components/sync-progress-client";
@@ -11,19 +10,14 @@ import {
 
 /**
  * Detail panel for the repo overview page (/:owner/:name).
- * Sync parent renders immediately; the async child resolves params
- * inside Suspense so the server can flush the outer shell first.
+ * Static shell renders immediately; each data section suspends independently.
  */
 export default function RepoDetailDefault({
 	params,
 }: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
-	return (
-		<Suspense fallback={<RepoOverviewSkeleton />}>
-			<RepoDetailContent paramsPromise={params} />
-		</Suspense>
-	);
+	return <RepoDetailContent paramsPromise={params} />;
 }
 
 async function RepoDetailContent({
@@ -63,7 +57,6 @@ async function RepoOverviewHeaderContent({
 	owner: string;
 	name: string;
 }) {
-	await connection();
 	const initialOverview = await serverQueries.getRepoOverview
 		.queryPromise({ ownerLogin: owner, name })
 		.catch(() => null);
@@ -83,7 +76,6 @@ async function RecentPrsContent({
 	owner: string;
 	name: string;
 }) {
-	await connection();
 	const initialPrs = await serverQueries.listPullRequests
 		.queryPromise({ ownerLogin: owner, name, state: "open" })
 		.catch(() => []);
@@ -97,7 +89,6 @@ async function RecentIssuesContent({
 	owner: string;
 	name: string;
 }) {
-	await connection();
 	const initialIssues = await serverQueries.listIssues
 		.queryPromise({ ownerLogin: owner, name, state: "open" })
 		.catch(() => []);
@@ -107,22 +98,6 @@ async function RecentIssuesContent({
 			name={name}
 			initialIssues={initialIssues}
 		/>
-	);
-}
-
-// ---------------------------------------------------------------------------
-// Skeletons
-// ---------------------------------------------------------------------------
-
-function RepoOverviewSkeleton() {
-	return (
-		<div className="h-full overflow-y-auto">
-			<div className="px-6 py-8">
-				<OverviewHeaderSkeleton />
-				<PrsSkeleton />
-				<IssuesSkeleton />
-			</div>
-		</div>
 	);
 }
 

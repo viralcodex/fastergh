@@ -1,16 +1,10 @@
-import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
-import { WorkflowRunDetailSkeleton } from "../../../../../../_components/skeletons";
 import { WorkflowRunDetailClient } from "../../[runNumber]/workflow-run-detail-client";
 
 export default function WorkflowRunDetailSlot(props: {
 	params: Promise<{ owner: string; name: string; runId: string }>;
 }) {
-	return (
-		<Suspense fallback={<WorkflowRunDetailSkeleton />}>
-			<WorkflowRunDetailContent paramsPromise={props.params} />
-		</Suspense>
-	);
+	return <WorkflowRunDetailContent paramsPromise={props.params} />;
 }
 
 async function WorkflowRunDetailContent({

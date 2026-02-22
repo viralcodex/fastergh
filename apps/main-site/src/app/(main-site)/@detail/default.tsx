@@ -1,5 +1,4 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { connection } from "next/server";
 import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import type { DashboardData } from "./home-dashboard-client";
@@ -47,7 +46,6 @@ export default function DetailDefault() {
 // ---------------------------------------------------------------------------
 
 async function fetchDashboard(): Promise<DashboardData> {
-	await connection();
 	return serverQueries.getHomeDashboard.queryPromise({});
 }
 

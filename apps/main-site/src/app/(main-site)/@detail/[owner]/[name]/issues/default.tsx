@@ -1,5 +1,4 @@
 import { CircleDot } from "@packages/ui/components/icons";
-import { Suspense } from "react";
 import { SyncProgressOverlay } from "../../../../_components/sync-progress-client";
 
 export default function IssuesDetailDefault({
@@ -7,11 +6,7 @@ export default function IssuesDetailDefault({
 }: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
-	return (
-		<Suspense>
-			<IssuesDetailContent paramsPromise={params} />
-		</Suspense>
-	);
+	return <IssuesDetailContent paramsPromise={params} />;
 }
 
 async function IssuesDetailContent({

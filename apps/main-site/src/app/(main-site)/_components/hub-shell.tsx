@@ -1,20 +1,16 @@
 "use client";
 
 import { KeyboardShortcutsDialog } from "@packages/ui/components/keyboard-shortcuts-dialog";
-import { Link } from "@packages/ui/components/link";
 import {
 	ResizableHandle,
 	ResizablePanel,
 	ResizablePanelGroup,
 } from "@packages/ui/components/resizable";
 import { useHotkey } from "@tanstack/react-hotkeys";
-import { ArrowLeft } from "lucide-react";
-import { usePathname } from "next/navigation";
 import {
 	type ComponentRef,
 	createContext,
 	type ReactNode,
-	Suspense,
 	useCallback,
 	useContext,
 	useMemo,
@@ -40,17 +36,6 @@ export function useHubSidebar() {
 	return useContext(HubSidebarContext);
 }
 
-/**
- * Two-panel resizable shell that positions parallel route slots.
- * Desktop always shows both panels side-by-side.
- * Mobile shows one panel at a time based on URL depth.
- *
- * The left panel shows either the repo sidebar (at /) or the list view
- * (at /owner/name/pulls|issues) — swapped by Next.js parallel routes.
- *
- * The dynamic `usePathname()` call is isolated inside `<MobileView>` and
- * wrapped in `<Suspense>` so the rest of the shell can be prerendered.
- */
 export function HubShell({
 	sidebar,
 	detail,
@@ -108,88 +93,17 @@ export function HubShell({
 					</ResizablePanelGroup>
 				</div>
 
-				{/* Mobile: stacked view — usePathname is isolated here */}
+				{/* Mobile: same shell, stacked panels */}
 				<div className="md:hidden h-full">
-					<Suspense>
-						<MobileView sidebar={sidebar} detail={detail} />
-					</Suspense>
+					<div className="grid h-full grid-rows-[minmax(16rem,40dvh)_minmax(0,1fr)]">
+						<div className="min-h-0 border-b border-border/60">{sidebar}</div>
+						<div className="min-h-0">{detail}</div>
+					</div>
 				</div>
 
-				<Suspense fallback={null}>
-					<SearchCommand />
-				</Suspense>
+				<SearchCommand />
 				<KeyboardShortcutsDialog />
 			</div>
 		</HubSidebarContext.Provider>
 	);
 }
-
-/**
- * Mobile panel switcher — the only component that calls `usePathname()`.
- * Isolated inside Suspense so it doesn't block prerendering.
- */
-function MobileView({
-	sidebar,
-	detail,
-}: {
-	sidebar: ReactNode;
-	detail: ReactNode;
-}) {
-	const pathname = usePathname();
-	const segments = pathname.split("/").filter(Boolean);
-
-	const owner = segments.length >= 2 ? segments[0] : null;
-	const name = segments.length >= 2 ? segments[1] : null;
-	const detailBackHref =
-		owner !== null && name !== null
-			? (() => {
-					const tabSegment = segments[2];
-					if (tabSegment === "issues") {
-						return segments[3] === undefined
-							? null
-							: `/${owner}/${name}/issues`;
-					}
-					if (tabSegment === "pull") {
-						return segments[3] === undefined ? null : `/${owner}/${name}/pulls`;
-					}
-					if (tabSegment === "actions") {
-						const hasRun = segments[3] === "runs" && segments[4] !== undefined;
-						return hasRun ? `/${owner}/${name}/actions` : null;
-					}
-					if (tabSegment === "blob") {
-						const ref = segments[3];
-						return ref === undefined || segments[4] === undefined
-							? null
-							: `/${owner}/${name}/tree/${encodeURIComponent(ref)}`;
-					}
-					return null;
-				})()
-			: null;
-
-	// Detail view: show detail with back-to-list link
-	if (owner && name && detailBackHref !== null) {
-		return (
-			<div className="flex h-full flex-col">
-				<div className="shrink-0 flex items-center gap-2 border-b px-3 py-2">
-					<Link
-						href={detailBackHref}
-						className="text-[11px] text-muted-foreground hover:text-foreground no-underline flex items-center gap-1 font-medium"
-					>
-						<ArrowLeft className="size-3" />
-						Back to list
-					</Link>
-				</div>
-				<div className="flex-1 overflow-y-auto">{detail}</div>
-			</div>
-		);
-	}
-
-	// Repo selected or root: show the sidebar (which contains repo list OR item list)
-	return sidebar;
-}
-
-// ---------------------------------------------------------------------------
-// Detail panel skeleton — shown when the detail slot suspends during
-// route transitions (e.g. navigating from PR list to PR detail).
-// Matches a generic content shape so the panel doesn't flash blank.
-// ---------------------------------------------------------------------------

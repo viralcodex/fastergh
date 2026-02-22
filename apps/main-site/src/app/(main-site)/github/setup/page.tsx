@@ -20,7 +20,16 @@ export default async function GitHubSetupPage(props: {
 		setup_action?: string;
 	}>;
 }) {
-	const searchParams = await props.searchParams;
+	return handleGitHubSetupRedirect(props.searchParams);
+}
+
+async function handleGitHubSetupRedirect(
+	searchParamsPromise: Promise<{
+		installation_id?: string;
+		setup_action?: string;
+	}>,
+) {
+	const searchParams = await searchParamsPromise;
 	const installationId = searchParams.installation_id;
 	const setupAction = searchParams.setup_action;
 

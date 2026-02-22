@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { FileViewer } from "../../../code/file-viewer";
 
 export default function TreeDetailPage({
@@ -6,11 +5,7 @@ export default function TreeDetailPage({
 }: {
 	params: Promise<{ owner: string; name: string; ref: string }>;
 }) {
-	return (
-		<Suspense>
-			<TreeContent paramsPromise={params} />
-		</Suspense>
-	);
+	return <TreeContent paramsPromise={params} />;
 }
 
 async function TreeContent({

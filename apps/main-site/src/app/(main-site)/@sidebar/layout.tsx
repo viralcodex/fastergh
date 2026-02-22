@@ -1,6 +1,4 @@
-import { Skeleton } from "@packages/ui/components/skeleton";
-import { connection } from "next/server";
-import { type ReactNode, Suspense } from "react";
+import type { ReactNode } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { SidebarClient } from "./sidebar-client";
 import { NavSelectorSlot } from "./sidebar-nav-selector-slot";
@@ -8,33 +6,19 @@ import { NavSelectorSlot } from "./sidebar-nav-selector-slot";
 /**
  * Persistent sidebar layout.
  *
- * The default export is **sync** — it renders `SidebarClient` immediately.
- * The nav selector data is fetched in a separate async component inside its
- * own Suspense boundary, so changing `{children}` (route navigation) never
- * re-suspends the sidebar shell.
+ * The default export is sync and renders the static sidebar shell immediately.
+ * The nav selector is fetched by a colocated async server component that is
+ * mounted into the shell's header slot.
  */
 export default function SidebarLayout({ children }: { children: ReactNode }) {
 	return (
-		<SidebarClient
-			navSelector={
-				<Suspense
-					fallback={
-						<div className="shrink-0 px-2 pt-2.5 pb-1.5 border-b border-sidebar-border">
-							<Skeleton className="h-8 w-full rounded-sm" />
-						</div>
-					}
-				>
-					<NavSelectorContent />
-				</Suspense>
-			}
-		>
+		<SidebarClient navSelector={<NavSelectorContent />}>
 			{children}
 		</SidebarClient>
 	);
 }
 
 async function NavSelectorContent() {
-	await connection();
 	const initialRepos = await serverQueries.listRepos.queryPromise({});
 
 	if (initialRepos.length === 0) {

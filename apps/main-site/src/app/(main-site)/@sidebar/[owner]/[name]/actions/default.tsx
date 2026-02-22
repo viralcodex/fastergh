@@ -1,18 +1,12 @@
-import { connection } from "next/server";
-import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { RepoListShell } from "../../../../_components/repo-list-shell";
 import { WorkflowRunListClient } from "../../../../_components/workflow-run-list-client";
-import { RepoListSkeleton, SidebarRepoList } from "../../../sidebar-repo-list";
+import { SidebarRepoList } from "../../../sidebar-repo-list";
 
 export default function ActionsListDefault(props: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
-	return (
-		<Suspense fallback={<RepoListSkeleton />}>
-			<Content paramsPromise={props.params} />
-		</Suspense>
-	);
+	return <Content paramsPromise={props.params} />;
 }
 
 async function Content({
@@ -20,7 +14,6 @@ async function Content({
 }: {
 	paramsPromise: Promise<{ owner: string; name: string }>;
 }) {
-	await connection();
 	const { owner, name } = await paramsPromise;
 	const initialRepos = await serverQueries.listRepos.queryPromise({});
 
