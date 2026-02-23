@@ -906,10 +906,12 @@ const computeRepoCounts = (repositoryId: number) =>
 	});
 
 const ANONYMOUS_FEATURED_REPO_LIMIT = 10;
-const PERSONALIZED_REPO_LIMIT = 120;
+const PERSONALIZED_REPO_LIMIT = 50;
 const REPOSITORY_SCAN_LIMIT = 400;
 const INSTALLATION_SCAN_LIMIT = 200;
-const INTERACTION_NOTIFICATION_LIMIT = 250;
+
+/** Maximum repos to fetch detailed PR/issue/activity data for on the dashboard. */
+const DASHBOARD_DETAIL_REPO_LIMIT = 20;
 
 const sortByRecentActivity = <
 	T extends {
@@ -989,27 +991,6 @@ const selectSidebarAndDashboardRepos = Effect.gen(function* () {
 		memberRepos.push(repo);
 	}
 
-	const notifications = yield* ctx.db
-		.query("github_notifications")
-		.withIndex("by_userId_and_updatedAt", (q) => q.eq("userId", userId))
-		.order("desc")
-		.take(INTERACTION_NOTIFICATION_LIMIT);
-
-	const interactedRepoIds = new Set<number>();
-	for (const notification of notifications) {
-		if (notification.repositoryId === null) continue;
-		if (memberRepoIds.has(notification.repositoryId)) continue;
-		interactedRepoIds.add(notification.repositoryId);
-	}
-
-	const interactedRepos = [];
-	for (const repositoryId of interactedRepoIds) {
-		const repo = reposById.get(repositoryId);
-		if (repo === undefined) continue;
-		if (repo.private) continue;
-		interactedRepos.push(repo);
-	}
-
 	const installations = yield* ctx.db
 		.query("github_installations")
 		.take(INSTALLATION_SCAN_LIMIT);
@@ -1030,34 +1011,13 @@ const selectSidebarAndDashboardRepos = Effect.gen(function* () {
 		memberPersonalRepos.push(repo);
 	}
 
-	const interactedOrgRepos = [];
-	const interactedPersonalRepos = [];
-	for (const repo of interactedRepos) {
-		if (organizationInstallationIds.has(repo.installationId)) {
-			interactedOrgRepos.push(repo);
-			continue;
-		}
-		interactedPersonalRepos.push(repo);
-	}
-
 	const sortedMemberOrgRepos = sortByRecentActivity(memberOrgRepos);
-	const sortedInteractedOrgRepos = sortByRecentActivity(interactedOrgRepos);
 	const sortedMemberPersonalRepos = sortByRecentActivity(memberPersonalRepos);
-	const sortedInteractedPersonalRepos = sortByRecentActivity(
-		interactedPersonalRepos,
-	);
 
-	const hasOrganizationContext =
-		sortedMemberOrgRepos.length > 0 || sortedInteractedOrgRepos.length > 0;
-
-	const personalizedRepos = hasOrganizationContext
-		? [
-				...sortedMemberOrgRepos,
-				...sortedInteractedOrgRepos,
-				...sortedMemberPersonalRepos,
-				...sortedInteractedPersonalRepos,
-			]
-		: [...sortedMemberPersonalRepos, ...sortedInteractedPersonalRepos];
+	const personalizedRepos =
+		sortedMemberOrgRepos.length > 0
+			? [...sortedMemberOrgRepos, ...sortedMemberPersonalRepos]
+			: sortedMemberPersonalRepos;
 
 	if (personalizedRepos.length > 0) {
 		return personalizedRepos.slice(0, PERSONALIZED_REPO_LIMIT);
@@ -1760,21 +1720,11 @@ getHomeDashboardDef.implement((args) =>
 
 		const accessibleRepos = yield* selectSidebarAndDashboardRepos;
 
+		// When signed in, accessibleRepos are already limited to member repos,
+		// so yourOwnerCounts is just a count of accessible repos per owner.
 		const yourOwnerCounts = new Map<string, number>();
 		if (Option.isSome(identity)) {
-			const permissions = yield* ctx.db
-				.query("github_user_repo_permissions")
-				.withIndex("by_userId", (q) => q.eq("userId", identity.value.subject))
-				.collect();
-
-			const memberRepoIds = new Set<number>();
-			for (const permission of permissions) {
-				if (!hasPullPermission(permission)) continue;
-				memberRepoIds.add(permission.repositoryId);
-			}
-
 			for (const repo of accessibleRepos) {
-				if (!memberRepoIds.has(repo.githubRepoId)) continue;
 				yourOwnerCounts.set(
 					repo.ownerLogin,
 					(yourOwnerCounts.get(repo.ownerLogin) ?? 0) + 1,
@@ -1822,8 +1772,14 @@ getHomeDashboardDef.implement((args) =>
 				? ownerScopedRepos
 				: ownerScopedRepos.filter((repo) => repo.fullName === repoFilter);
 
+		// Cap the repos we fetch detailed PR/issue/activity data for to stay
+		// within the Convex 1s query budget. The repos are already sorted by
+		// recent activity from selectSidebarAndDashboardRepos, so the top N
+		// are the most active.
+		const detailRepos = scopedRepos.slice(0, DASHBOARD_DETAIL_REPO_LIMIT);
+
 		const repoOverviews = yield* Effect.all(
-			scopedRepos.map((repo) =>
+			detailRepos.map((repo) =>
 				Effect.gen(function* () {
 					const counts = yield* computeRepoCounts(repo.githubRepoId);
 					return {
@@ -1871,7 +1827,7 @@ getHomeDashboardDef.implement((args) =>
 		const staleThresholdMs = 3 * 24 * 60 * 60 * 1000;
 
 		const allPrsByRepo = yield* Effect.all(
-			scopedRepos.map((repo) =>
+			detailRepos.map((repo) =>
 				Effect.gen(function* () {
 					const prs = yield* ctx.db
 						.query("github_pull_requests")
@@ -1879,7 +1835,7 @@ getHomeDashboardDef.implement((args) =>
 							q.eq("repositoryId", repo.githubRepoId).eq("state", "open"),
 						)
 						.order("desc")
-						.take(20);
+						.take(10);
 
 					return yield* Effect.all(
 						prs.map((pr) =>
@@ -2100,9 +2056,9 @@ getHomeDashboardDef.implement((args) =>
 			)
 			.slice(0, 12);
 
-		// Fetch recent issues across all scoped repos
+		// Fetch recent issues across detail repos
 		const allIssuesByRepo = yield* Effect.all(
-			scopedRepos.map((repo) =>
+			detailRepos.map((repo) =>
 				Effect.gen(function* () {
 					const issues = yield* ctx.db
 						.query("github_issues")
@@ -2110,7 +2066,7 @@ getHomeDashboardDef.implement((args) =>
 							q.eq("repositoryId", repo.githubRepoId).eq("state", "open"),
 						)
 						.order("desc")
-						.take(20);
+						.take(10);
 
 					return yield* Effect.all(
 						issues
@@ -2145,7 +2101,7 @@ getHomeDashboardDef.implement((args) =>
 			.slice(0, 20);
 
 		const allRecentActivityByRepo = yield* Effect.all(
-			scopedRepos.map((repo) =>
+			detailRepos.map((repo) =>
 				Effect.gen(function* () {
 					const activities = yield* ctx.db
 						.query("view_activity_feed")
@@ -2153,7 +2109,7 @@ getHomeDashboardDef.implement((args) =>
 							q.eq("repositoryId", repo.githubRepoId),
 						)
 						.order("desc")
-						.take(40);
+						.take(20);
 
 					return activities.map((activity) => ({
 						ownerLogin: repo.ownerLogin,

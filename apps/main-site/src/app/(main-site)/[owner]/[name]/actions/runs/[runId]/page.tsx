@@ -1,20 +1,13 @@
+import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
+import { WorkflowRunDetailSkeleton } from "../../../../../_components/skeletons";
 import { WorkflowRunDetailClient } from "./workflow-run-detail-client";
 
-export default function ActionRunDetailPage(props: {
+export default async function ActionRunDetailPage(props: {
 	params: Promise<{ owner: string; name: string; runId: string }>;
 }) {
-	return <WorkflowRunDetailContent paramsPromise={props.params} />;
-}
-
-async function WorkflowRunDetailContent({
-	paramsPromise,
-}: {
-	paramsPromise: Promise<{ owner: string; name: string; runId: string }>;
-}) {
-	const params = await paramsPromise;
-	const { owner, name } = params;
-	const runNumber = Number.parseInt(params.runId, 10);
+	const { owner, name, runId } = await props.params;
+	const runNumber = Number.parseInt(runId, 10);
 
 	if (Number.isNaN(runNumber)) {
 		return (
@@ -27,6 +20,28 @@ async function WorkflowRunDetailContent({
 		);
 	}
 
+	return (
+		<div className="h-full">
+			<Suspense fallback={<WorkflowRunDetailSkeleton />}>
+				<WorkflowRunDetailContent
+					owner={owner}
+					name={name}
+					runNumber={runNumber}
+				/>
+			</Suspense>
+		</div>
+	);
+}
+
+async function WorkflowRunDetailContent({
+	owner,
+	name,
+	runNumber,
+}: {
+	owner: string;
+	name: string;
+	runNumber: number;
+}) {
 	const initialRun = await serverQueries.getWorkflowRunDetail
 		.queryPromise({
 			ownerLogin: owner,

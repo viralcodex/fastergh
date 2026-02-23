@@ -1,33 +1,44 @@
 import { api } from "@packages/database/convex/_generated/api";
+import { Suspense } from "react";
 import { fetchAuthMutation } from "@/lib/auth-server";
 import { serverQueries } from "@/lib/server-queries";
+import { PrDetailSkeleton } from "../../../../_components/skeletons";
 import { PrDetailClient } from "./pr-detail-client";
 
-export default function PrDetailPage(props: {
+export default async function PrDetailPage(props: {
 	params: Promise<{ owner: string; name: string; number: string }>;
 }) {
-	return <PrDetailContent paramsPromise={props.params} />;
+	const { owner, name, number: numberStr } = await props.params;
+	const num = Number.parseInt(numberStr, 10);
+
+	return (
+		<div className="h-full">
+			<Suspense fallback={<PrDetailSkeleton />}>
+				<PrDetailContent owner={owner} name={name} prNumber={num} />
+			</Suspense>
+		</div>
+	);
 }
 
 async function PrDetailContent({
-	paramsPromise,
+	owner,
+	name,
+	prNumber,
 }: {
-	paramsPromise: Promise<{ owner: string; name: string; number: string }>;
+	owner: string;
+	name: string;
+	prNumber: number;
 }) {
-	const params = await paramsPromise;
-	const { owner, name } = params;
-	const num = Number.parseInt(params.number, 10);
-
 	const [initialPr, initialFiles] = await Promise.all([
 		serverQueries.getPullRequestDetail.queryPromise({
 			ownerLogin: owner,
 			name,
-			number: num,
+			number: prNumber,
 		}),
 		serverQueries.listPrFiles.queryPromise({
 			ownerLogin: owner,
 			name,
-			number: num,
+			number: prNumber,
 		}),
 	]);
 
@@ -35,7 +46,7 @@ async function PrDetailContent({
 		await fetchAuthMutation(api.rpc.projectionQueries.requestPrFileSync, {
 			ownerLogin: owner,
 			name,
-			number: num,
+			number: prNumber,
 		}).catch(() => null);
 	}
 
@@ -43,7 +54,7 @@ async function PrDetailContent({
 		<PrDetailClient
 			owner={owner}
 			name={name}
-			prNumber={num}
+			prNumber={prNumber}
 			initialPr={initialPr}
 			initialFiles={initialFiles}
 		/>

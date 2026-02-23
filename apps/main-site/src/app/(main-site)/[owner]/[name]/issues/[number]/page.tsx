@@ -1,32 +1,43 @@
+import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
+import { IssueDetailSkeleton } from "../../../../_components/skeletons";
 import { IssueDetailClient } from "./issue-detail-client";
 
-export default function IssueDetailPage(props: {
+export default async function IssueDetailPage(props: {
 	params: Promise<{ owner: string; name: string; number: string }>;
 }) {
-	return <IssueDetailContent paramsPromise={props.params} />;
+	const { owner, name, number: numberStr } = await props.params;
+	const num = Number.parseInt(numberStr, 10);
+
+	return (
+		<div className="h-full">
+			<Suspense fallback={<IssueDetailSkeleton />}>
+				<IssueDetailContent owner={owner} name={name} issueNumber={num} />
+			</Suspense>
+		</div>
+	);
 }
 
 async function IssueDetailContent({
-	paramsPromise,
+	owner,
+	name,
+	issueNumber,
 }: {
-	paramsPromise: Promise<{ owner: string; name: string; number: string }>;
+	owner: string;
+	name: string;
+	issueNumber: number;
 }) {
-	const params = await paramsPromise;
-	const { owner, name } = params;
-	const num = Number.parseInt(params.number, 10);
-
 	const initialIssue = await serverQueries.getIssueDetail.queryPromise({
 		ownerLogin: owner,
 		name,
-		number: num,
+		number: issueNumber,
 	});
 
 	return (
 		<IssueDetailClient
 			owner={owner}
 			name={name}
-			issueNumber={num}
+			issueNumber={issueNumber}
 			initialIssue={initialIssue}
 		/>
 	);

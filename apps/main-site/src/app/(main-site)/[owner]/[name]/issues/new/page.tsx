@@ -1,19 +1,29 @@
+import { Skeleton } from "@packages/ui/components/skeleton";
+import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { NewIssueClient } from "./new-issue-client";
 
-export default function NewIssuePage(props: {
+export default async function NewIssuePage(props: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
-	return <NewIssueContent paramsPromise={props.params} />;
+	const { owner, name } = await props.params;
+
+	return (
+		<div className="h-full overflow-y-auto">
+			<Suspense fallback={<NewIssueSkeleton />}>
+				<NewIssueContent owner={owner} name={name} />
+			</Suspense>
+		</div>
+	);
 }
 
 async function NewIssueContent({
-	paramsPromise,
+	owner,
+	name,
 }: {
-	paramsPromise: Promise<{ owner: string; name: string }>;
+	owner: string;
+	name: string;
 }) {
-	const { owner, name } = await paramsPromise;
-
 	const overview = await serverQueries.getRepoOverview.queryPromise({
 		ownerLogin: owner,
 		name,
@@ -35,5 +45,30 @@ async function NewIssueContent({
 			name={name}
 			repositoryId={overview.repositoryId}
 		/>
+	);
+}
+
+function NewIssueSkeleton() {
+	return (
+		<div className="animate-pulse p-4 space-y-4">
+			{/* Title input */}
+			<Skeleton className="h-9 w-full rounded-md" />
+			{/* Template tabs */}
+			<div className="flex gap-2">
+				<Skeleton className="h-7 w-20 rounded" />
+				<Skeleton className="h-7 w-24 rounded" />
+			</div>
+			{/* Body textarea */}
+			<Skeleton className="h-48 w-full rounded-md" />
+			{/* Metadata selectors row */}
+			<div className="flex gap-3">
+				<Skeleton className="h-8 w-28 rounded" />
+				<Skeleton className="h-8 w-28 rounded" />
+			</div>
+			{/* Submit button */}
+			<div className="flex justify-end">
+				<Skeleton className="h-9 w-28 rounded" />
+			</div>
+		</div>
 	);
 }
