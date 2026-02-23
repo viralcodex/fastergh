@@ -33,13 +33,18 @@ const isMissingAggregateComponentError = (error: Error) =>
 	error.message.includes('Component "') &&
 	error.message.includes("is not registered");
 
+const isAggregateMissingKeyError = (error: Error) =>
+	error.message.includes("DELETE_MISSING_KEY") ||
+	error.message.includes("REPLACE_MISSING_KEY");
+
 const runAggregateSync = <A>(operation: () => Promise<A>) =>
 	Effect.tryPromise({
 		try: operation,
 		catch: (error) => new Error(String(error)),
 	}).pipe(
 		Effect.catchAll((error) =>
-			isMissingAggregateComponentError(error)
+			isMissingAggregateComponentError(error) ||
+			isAggregateMissingKeyError(error)
 				? Effect.succeed(null)
 				: Effect.die(error),
 		),
