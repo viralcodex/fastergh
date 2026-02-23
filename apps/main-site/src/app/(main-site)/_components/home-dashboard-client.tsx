@@ -83,10 +83,10 @@ type DashboardQuery = {
 // ---------------------------------------------------------------------------
 
 function useDashboardData(
-	initialData: DashboardData,
+	initialData: DashboardData | null,
 	query: DashboardQuery,
 ): {
-	readonly data: DashboardData;
+	readonly data: DashboardData | null;
 	readonly isWaitingForSignedInData: boolean;
 } {
 	const session = authClient.useSession();
@@ -116,11 +116,19 @@ function useDashboardData(
 
 	const isWaitingForSignedInData =
 		session.data !== null &&
+		initialData !== null &&
 		initialData.githubLogin === null &&
 		Result.isInitial(result);
 
+	if (initialData !== null && !isWaitingForSignedInData) {
+		return {
+			data: initialData,
+			isWaitingForSignedInData: false,
+		};
+	}
+
 	return {
-		data: initialData,
+		data: null,
 		isWaitingForSignedInData,
 	};
 }
@@ -187,13 +195,17 @@ export function CommandPaletteClient({
 	initialData,
 	query,
 }: {
-	initialData: DashboardData;
+	initialData?: DashboardData;
 	query: DashboardQuery;
 }) {
 	const { data, isWaitingForSignedInData } = useDashboardData(
-		initialData,
+		initialData ?? null,
 		query,
 	);
+
+	if (data === null) {
+		return <Skeleton className="h-10 w-full rounded-lg" />;
+	}
 
 	if (isWaitingForSignedInData) {
 		return <Skeleton className="h-10 w-full rounded-lg" />;
@@ -397,13 +409,17 @@ export function PrColumnClient({
 	initialData,
 	query,
 }: {
-	initialData: DashboardData;
+	initialData?: DashboardData;
 	query: DashboardQuery;
 }) {
 	const { data, isWaitingForSignedInData } = useDashboardData(
-		initialData,
+		initialData ?? null,
 		query,
 	);
+
+	if (data === null) {
+		return <DashboardColumnSkeleton title="Pull Requests" />;
+	}
 
 	if (isWaitingForSignedInData) {
 		return <DashboardColumnSkeleton title="Pull Requests" />;
@@ -433,13 +449,17 @@ export function IssuesColumnClient({
 	initialData,
 	query,
 }: {
-	initialData: DashboardData;
+	initialData?: DashboardData;
 	query: DashboardQuery;
 }) {
 	const { data, isWaitingForSignedInData } = useDashboardData(
-		initialData,
+		initialData ?? null,
 		query,
 	);
+
+	if (data === null) {
+		return <DashboardColumnSkeleton title="Issues" />;
+	}
 
 	if (isWaitingForSignedInData) {
 		return <DashboardColumnSkeleton title="Issues" />;
@@ -472,13 +492,17 @@ export function ReposColumnClient({
 	initialData,
 	query,
 }: {
-	initialData: DashboardData;
+	initialData?: DashboardData;
 	query: DashboardQuery;
 }) {
 	const { data, isWaitingForSignedInData } = useDashboardData(
-		initialData,
+		initialData ?? null,
 		query,
 	);
+
+	if (data === null) {
+		return <DashboardColumnSkeleton title="Repositories" />;
+	}
 
 	if (isWaitingForSignedInData) {
 		return <DashboardColumnSkeleton title="Repositories" />;
