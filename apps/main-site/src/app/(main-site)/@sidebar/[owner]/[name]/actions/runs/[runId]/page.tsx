@@ -1,14 +1,18 @@
 import ActionsListDefault from "../../default";
 
-export default async function ActionRunSidebarPage(props: {
+/**
+ * Sidebar when viewing a specific workflow run — shows the runs list with this run highlighted.
+ *
+ * Synchronous default export: passes params through as promises so that
+ * runId extraction happens inside the already-Suspensed async content.
+ */
+export default function ActionRunSidebarPage(props: {
 	params: Promise<{ owner: string; name: string; runId: string }>;
 }) {
-	const { owner, name, runId } = await props.params;
-	const parsed = Number.parseInt(runId, 10);
-	const activeRunNumber = Number.isNaN(parsed) ? null : parsed;
-	const repoParams = Promise.resolve({ owner, name });
-
 	return (
-		<ActionsListDefault params={repoParams} activeRunNumber={activeRunNumber} />
+		<ActionsListDefault
+			params={props.params}
+			activeRunIdPromise={props.params}
+		/>
 	);
 }

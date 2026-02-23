@@ -1,17 +1,18 @@
 import IssueListDefault from "../default";
 
-export default async function IssueDetailSidebarPage(props: {
+/**
+ * Sidebar when viewing a specific issue — shows the issue list with this issue highlighted.
+ *
+ * Synchronous default export: passes params through as promises so that
+ * number extraction happens inside the already-Suspensed async content.
+ */
+export default function IssueDetailSidebarPage(props: {
 	params: Promise<{ owner: string; name: string; number: string }>;
 }) {
-	const { owner, name, number } = await props.params;
-	const parsed = Number.parseInt(number, 10);
-	const activeIssueNumber = Number.isNaN(parsed) ? null : parsed;
-	const repoParams = Promise.resolve({ owner, name });
-
 	return (
 		<IssueListDefault
-			params={repoParams}
-			activeIssueNumber={activeIssueNumber}
+			params={props.params}
+			activeNumberPromise={props.params}
 		/>
 	);
 }

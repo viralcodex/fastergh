@@ -1,14 +1,15 @@
 import PrListDefault from "../../pulls/default";
 
-export default async function PullDetailSidebarPage(props: {
+/**
+ * Sidebar when viewing a specific PR — shows the PR list with this PR highlighted.
+ *
+ * Synchronous default export: passes params through as promises so that
+ * number extraction happens inside the already-Suspensed async content.
+ */
+export default function PullDetailSidebarPage(props: {
 	params: Promise<{ owner: string; name: string; number: string }>;
 }) {
-	const { owner, name, number } = await props.params;
-	const parsed = Number.parseInt(number, 10);
-	const activePullNumber = Number.isNaN(parsed) ? null : parsed;
-	const repoParams = Promise.resolve({ owner, name });
-
 	return (
-		<PrListDefault params={repoParams} activePullNumber={activePullNumber} />
+		<PrListDefault params={props.params} activeNumberPromise={props.params} />
 	);
 }

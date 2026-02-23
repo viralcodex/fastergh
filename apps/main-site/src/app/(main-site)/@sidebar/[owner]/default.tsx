@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
+import { ListSkeleton } from "../../_components/skeletons";
 import { SidebarRepoList } from "../sidebar-repo-list";
 
 /**
@@ -8,7 +10,11 @@ import { SidebarRepoList } from "../sidebar-repo-list";
 export default function OrgSidebarDefault(props: {
 	params?: Promise<{ owner: string }>;
 }) {
-	return <Content paramsPromise={props.params} />;
+	return (
+		<Suspense fallback={<ListSkeleton />}>
+			<Content paramsPromise={props.params} />
+		</Suspense>
+	);
 }
 
 async function Content({

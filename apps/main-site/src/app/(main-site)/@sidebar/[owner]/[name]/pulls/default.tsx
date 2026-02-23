@@ -10,10 +10,14 @@ import { ListSkeleton } from "../../../../_components/skeletons";
  * Synchronous so the outer sidebar Suspense boundary is never triggered.
  * The cached `RepoListShell` renders the tab bar instantly, and all async
  * work happens inside the inner `<Suspense>`.
+ *
+ * `activeNumberPromise` lets detail pages (e.g. pull/[number]) pass their
+ * params through without awaiting — number extraction happens inside Suspense.
  */
 export default function PrListDefault(props: {
 	params: Promise<{ owner: string; name: string }>;
 	activePullNumber?: number | null;
+	activeNumberPromise?: Promise<{ number: string }>;
 }) {
 	return (
 		<RepoListShell paramsPromise={props.params} activeTab="pulls">
@@ -21,6 +25,7 @@ export default function PrListDefault(props: {
 				<PrListContent
 					paramsPromise={props.params}
 					activePullNumber={props.activePullNumber ?? null}
+					activeNumberPromise={props.activeNumberPromise}
 				/>
 			</Suspense>
 		</RepoListShell>
@@ -30,11 +35,20 @@ export default function PrListDefault(props: {
 async function PrListContent({
 	paramsPromise,
 	activePullNumber,
+	activeNumberPromise,
 }: {
 	paramsPromise: Promise<{ owner: string; name: string }>;
 	activePullNumber: number | null;
+	activeNumberPromise?: Promise<{ number: string }>;
 }) {
 	const { owner, name } = await paramsPromise;
+
+	let resolvedActive = activePullNumber;
+	if (activeNumberPromise) {
+		const { number } = await activeNumberPromise;
+		const parsed = Number.parseInt(number, 10);
+		resolvedActive = Number.isNaN(parsed) ? null : parsed;
+	}
 
 	const initialPrs = await serverQueries.listPullRequests
 		.queryPromise({
@@ -49,7 +63,7 @@ async function PrListContent({
 			owner={owner}
 			name={name}
 			initialData={initialPrs}
-			activePullNumber={activePullNumber}
+			activePullNumber={resolvedActive}
 		/>
 	);
 }
