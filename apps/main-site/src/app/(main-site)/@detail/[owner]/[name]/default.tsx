@@ -1,5 +1,6 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { Suspense } from "react";
+import { cacheLife } from "next/cache";
+import { type ReactNode, Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { SyncProgressOverlay } from "../../../_components/sync-progress-client";
 import {
@@ -10,17 +11,20 @@ import {
 
 /**
  * Detail panel for the repo overview page (/:owner/:name).
- * Static shell renders immediately; each data section suspends independently.
+ *
+ * Entry resolves params and builds dynamic slots. The cached shell serves
+ * the layout instantly; each data section streams in via Suspense.
  */
 export default function RepoDetailDefault({
 	params,
 }: {
 	params: Promise<{ owner: string; name: string }>;
 }) {
-	return <RepoDetailContent paramsPromise={params} />;
+	return <RepoDetailEntry paramsPromise={params} />;
 }
 
-async function RepoDetailContent({
+/** Request-aware entry — resolves params, builds dynamic slots. */
+async function RepoDetailEntry({
 	paramsPromise,
 }: {
 	paramsPromise: Promise<{ owner: string; name: string }>;
@@ -28,18 +32,55 @@ async function RepoDetailContent({
 	const { owner, name } = await paramsPromise;
 
 	return (
+		<RepoDetailShell
+			owner={owner}
+			name={name}
+			header={
+				<Suspense fallback={<OverviewHeaderSkeleton />}>
+					<RepoOverviewHeaderContent owner={owner} name={name} />
+				</Suspense>
+			}
+			prs={
+				<Suspense fallback={<PrsSkeleton />}>
+					<RecentPrsContent owner={owner} name={name} />
+				</Suspense>
+			}
+			issues={
+				<Suspense fallback={<IssuesSkeleton />}>
+					<RecentIssuesContent owner={owner} name={name} />
+				</Suspense>
+			}
+		/>
+	);
+}
+
+/**
+ * Cached static shell — layout is deterministic per {owner, name}.
+ * Dynamic data streams through the ReactNode slots.
+ */
+async function RepoDetailShell({
+	owner,
+	name,
+	header,
+	prs,
+	issues,
+}: {
+	owner: string;
+	name: string;
+	header: ReactNode;
+	prs: ReactNode;
+	issues: ReactNode;
+}) {
+	"use cache";
+	cacheLife("max");
+
+	return (
 		<SyncProgressOverlay owner={owner} name={name}>
 			<div className="h-full overflow-y-auto">
 				<div className="px-6 py-8">
-					<Suspense fallback={<OverviewHeaderSkeleton />}>
-						<RepoOverviewHeaderContent owner={owner} name={name} />
-					</Suspense>
-					<Suspense fallback={<PrsSkeleton />}>
-						<RecentPrsContent owner={owner} name={name} />
-					</Suspense>
-					<Suspense fallback={<IssuesSkeleton />}>
-						<RecentIssuesContent owner={owner} name={name} />
-					</Suspense>
+					{header}
+					{prs}
+					{issues}
 				</div>
 			</div>
 		</SyncProgressOverlay>

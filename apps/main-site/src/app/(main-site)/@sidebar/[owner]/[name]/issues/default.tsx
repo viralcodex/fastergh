@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { IssueListClient } from "../../../../_components/issue-list-client";
 import { RepoListShell } from "../../../../_components/repo-list-shell";
+import { ListSkeleton } from "../../../../_components/skeletons";
 import { SidebarRepoList } from "../../../sidebar-repo-list";
 
 export default function IssueListDefault(props: {
@@ -8,14 +10,15 @@ export default function IssueListDefault(props: {
 	activeIssueNumberPromise?: Promise<number | null>;
 }) {
 	return (
-		<Content
+		<IssueListEntry
 			paramsPromise={props.params}
 			activeIssueNumberPromise={props.activeIssueNumberPromise}
 		/>
 	);
 }
 
-async function Content({
+/** Entry — resolves params and routes to cached shell or fallback. */
+async function IssueListEntry({
 	paramsPromise,
 	activeIssueNumberPromise,
 }: {
@@ -26,21 +29,27 @@ async function Content({
 	const activeIssueNumber = activeIssueNumberPromise
 		? await activeIssueNumberPromise
 		: null;
-	const initialRepos = await serverQueries.listRepos.queryPromise({});
 
 	if (!owner || !name || owner.length === 0 || name.length === 0) {
-		return <SidebarRepoList initialRepos={initialRepos} />;
+		return <FallbackRepoList />;
 	}
 
 	return (
 		<RepoListShell paramsPromise={paramsPromise} activeTab="issues">
-			<IssueListContent
-				owner={owner}
-				name={name}
-				activeIssueNumber={activeIssueNumber ?? null}
-			/>
+			<Suspense fallback={<ListSkeleton />}>
+				<IssueListContent
+					owner={owner}
+					name={name}
+					activeIssueNumber={activeIssueNumber ?? null}
+				/>
+			</Suspense>
 		</RepoListShell>
 	);
+}
+
+async function FallbackRepoList() {
+	const initialRepos = await serverQueries.listRepos.queryPromise({});
+	return <SidebarRepoList initialRepos={initialRepos} />;
 }
 
 async function IssueListContent({

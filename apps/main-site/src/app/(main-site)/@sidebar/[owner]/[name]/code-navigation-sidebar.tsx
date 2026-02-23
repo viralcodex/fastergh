@@ -1,3 +1,4 @@
+import { cacheLife } from "next/cache";
 import { Suspense } from "react";
 import { RepoListShell } from "../../../_components/repo-list-shell";
 import { ListSkeleton } from "../../../_components/skeletons";
@@ -20,6 +21,9 @@ async function FileTreeContent({
 }: {
 	paramsPromise: Promise<{ owner: string; name: string }>;
 }) {
+	"use cache";
+	cacheLife("max");
+
 	const { owner, name } = await paramsPromise;
 	return <FileTreeClient owner={owner} name={name} />;
 }

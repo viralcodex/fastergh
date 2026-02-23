@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { PrListClient } from "../../../_components/pr-list-client";
 import { RepoListShell } from "../../../_components/repo-list-shell";
+import { ListSkeleton } from "../../../_components/skeletons";
 import { SidebarRepoList } from "../../sidebar-repo-list";
 
 export default function SidebarRepoDefault(props: {
@@ -8,14 +10,15 @@ export default function SidebarRepoDefault(props: {
 	activePullNumber?: number | null;
 }) {
 	return (
-		<Content
+		<SidebarRepoEntry
 			paramsPromise={props.params}
 			activePullNumber={props.activePullNumber}
 		/>
 	);
 }
 
-async function Content({
+/** Entry — resolves params and routes to cached shell or fallback. */
+async function SidebarRepoEntry({
 	paramsPromise,
 	activePullNumber,
 }: {
@@ -23,21 +26,27 @@ async function Content({
 	activePullNumber?: number | null;
 }) {
 	const { owner, name } = await paramsPromise;
-	const initialRepos = await serverQueries.listRepos.queryPromise({});
 
 	if (!owner || !name || owner.length === 0 || name.length === 0) {
-		return <SidebarRepoList initialRepos={initialRepos} />;
+		return <FallbackRepoList />;
 	}
 
 	return (
 		<RepoListShell paramsPromise={paramsPromise} activeTab="pulls">
-			<PrListContent
-				owner={owner}
-				name={name}
-				activePullNumber={activePullNumber ?? null}
-			/>
+			<Suspense fallback={<ListSkeleton />}>
+				<PrListContent
+					owner={owner}
+					name={name}
+					activePullNumber={activePullNumber ?? null}
+				/>
+			</Suspense>
 		</RepoListShell>
 	);
+}
+
+async function FallbackRepoList() {
+	const initialRepos = await serverQueries.listRepos.queryPromise({});
+	return <SidebarRepoList initialRepos={initialRepos} />;
 }
 
 async function PrListContent({

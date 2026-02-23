@@ -1,5 +1,6 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { Suspense } from "react";
+import { cacheLife } from "next/cache";
+import { type ReactNode, Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import type { DashboardData } from "./home-dashboard-client";
 import {
@@ -10,31 +11,67 @@ import {
 	SignInCta,
 } from "./home-dashboard-client";
 
+/**
+ * Home dashboard detail panel.
+ *
+ * Entry component creates dynamic slots; cached shell renders the layout.
+ */
 export default function DetailDefault() {
+	return (
+		<DashboardShell
+			commandPalette={
+				<Suspense fallback={<Skeleton className="h-10 w-full rounded-lg" />}>
+					<CommandPaletteSection />
+				</Suspense>
+			}
+			prColumn={
+				<Suspense fallback={<ColumnSkeleton />}>
+					<PrColumnSection />
+				</Suspense>
+			}
+			issuesColumn={
+				<Suspense fallback={<ColumnSkeleton />}>
+					<IssuesColumnSection />
+				</Suspense>
+			}
+			reposColumn={
+				<Suspense fallback={<ColumnSkeleton />}>
+					<ReposColumnSection />
+				</Suspense>
+			}
+		/>
+	);
+}
+
+/** Cached static shell — deterministic layout, no request-specific data. */
+async function DashboardShell({
+	commandPalette,
+	prColumn,
+	issuesColumn,
+	reposColumn,
+}: {
+	commandPalette: ReactNode;
+	prColumn: ReactNode;
+	issuesColumn: ReactNode;
+	reposColumn: ReactNode;
+}) {
+	"use cache";
+	cacheLife("max");
+
 	return (
 		<div className="h-full overflow-y-auto bg-dotgrid">
 			<div className="mx-auto max-w-[1600px] px-4 py-4 md:px-6 md:py-5">
 				{/* Command palette */}
-				<div className="mb-4">
-					<Suspense fallback={<Skeleton className="h-10 w-full rounded-lg" />}>
-						<CommandPaletteSection />
-					</Suspense>
-				</div>
+				<div className="mb-4">{commandPalette}</div>
 
 				{/* Sign-in CTA — renders nothing if signed in */}
 				<SignInCta />
 
 				{/* Three-column grid */}
 				<div className="grid gap-4 lg:grid-cols-3">
-					<Suspense fallback={<ColumnSkeleton />}>
-						<PrColumnSection />
-					</Suspense>
-					<Suspense fallback={<ColumnSkeleton />}>
-						<IssuesColumnSection />
-					</Suspense>
-					<Suspense fallback={<ColumnSkeleton />}>
-						<ReposColumnSection />
-					</Suspense>
+					{prColumn}
+					{issuesColumn}
+					{reposColumn}
 				</div>
 			</div>
 		</div>

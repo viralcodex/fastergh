@@ -1,5 +1,6 @@
 import { Skeleton } from "@packages/ui/components/skeleton";
-import { Suspense } from "react";
+import { cacheLife } from "next/cache";
+import { type ReactNode, Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import type { DashboardData } from "../home-dashboard-client";
 import {
@@ -12,15 +13,18 @@ import {
 
 /**
  * Detail panel for the org overview page (/:owner).
- * Static shell renders immediately; data sections suspend independently.
+ *
+ * Entry component resolves params and creates dynamic slots. The cached
+ * shell serves instantly; data sections stream in via Suspense.
  */
 export default function OrgDetailDefault(props: {
 	params: Promise<{ owner: string }>;
 }) {
-	return <OrgDetailContent paramsPromise={props.params} />;
+	return <OrgDetailEntry paramsPromise={props.params} />;
 }
 
-async function OrgDetailContent({
+/** Request-aware entry — resolves params, builds dynamic slots. */
+async function OrgDetailEntry({
 	paramsPromise,
 }: {
 	paramsPromise: Promise<{ owner: string }>;
@@ -28,29 +32,60 @@ async function OrgDetailContent({
 	const { owner } = await paramsPromise;
 
 	return (
+		<OrgDetailShell
+			commandPalette={
+				<Suspense fallback={<Skeleton className="h-10 w-full rounded-lg" />}>
+					<OrgCommandPaletteSection owner={owner} />
+				</Suspense>
+			}
+			prColumn={
+				<Suspense fallback={<ColumnSkeleton />}>
+					<OrgPrColumnSection owner={owner} />
+				</Suspense>
+			}
+			issuesColumn={
+				<Suspense fallback={<ColumnSkeleton />}>
+					<OrgIssuesColumnSection owner={owner} />
+				</Suspense>
+			}
+			reposColumn={
+				<Suspense fallback={<ColumnSkeleton />}>
+					<OrgReposColumnSection owner={owner} />
+				</Suspense>
+			}
+		/>
+	);
+}
+
+/** Cached static shell — deterministic layout, no request-specific data. */
+async function OrgDetailShell({
+	commandPalette,
+	prColumn,
+	issuesColumn,
+	reposColumn,
+}: {
+	commandPalette: ReactNode;
+	prColumn: ReactNode;
+	issuesColumn: ReactNode;
+	reposColumn: ReactNode;
+}) {
+	"use cache";
+	cacheLife("max");
+
+	return (
 		<div className="h-full overflow-y-auto bg-dotgrid">
 			<div className="mx-auto max-w-[1600px] px-4 py-4 md:px-6 md:py-5">
 				{/* Command palette */}
-				<div className="mb-4">
-					<Suspense fallback={<Skeleton className="h-10 w-full rounded-lg" />}>
-						<OrgCommandPaletteSection owner={owner} />
-					</Suspense>
-				</div>
+				<div className="mb-4">{commandPalette}</div>
 
 				{/* Sign-in CTA — renders nothing if signed in */}
 				<SignInCta />
 
 				{/* Three-column grid */}
 				<div className="grid gap-4 lg:grid-cols-3">
-					<Suspense fallback={<ColumnSkeleton />}>
-						<OrgPrColumnSection owner={owner} />
-					</Suspense>
-					<Suspense fallback={<ColumnSkeleton />}>
-						<OrgIssuesColumnSection owner={owner} />
-					</Suspense>
-					<Suspense fallback={<ColumnSkeleton />}>
-						<OrgReposColumnSection owner={owner} />
-					</Suspense>
+					{prColumn}
+					{issuesColumn}
+					{reposColumn}
 				</div>
 			</div>
 		</div>

@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { serverQueries } from "@/lib/server-queries";
 import { RepoListShell } from "../../../../_components/repo-list-shell";
+import { ListSkeleton } from "../../../../_components/skeletons";
 import { WorkflowRunListClient } from "../../../../_components/workflow-run-list-client";
 import { SidebarRepoList } from "../../../sidebar-repo-list";
 
@@ -8,14 +10,15 @@ export default function ActionsListDefault(props: {
 	activeRunNumberPromise?: Promise<number | null>;
 }) {
 	return (
-		<Content
+		<ActionsListEntry
 			paramsPromise={props.params}
 			activeRunNumberPromise={props.activeRunNumberPromise}
 		/>
 	);
 }
 
-async function Content({
+/** Entry — resolves params and routes to cached shell or fallback. */
+async function ActionsListEntry({
 	paramsPromise,
 	activeRunNumberPromise,
 }: {
@@ -26,21 +29,27 @@ async function Content({
 	const activeRunNumber = activeRunNumberPromise
 		? await activeRunNumberPromise
 		: null;
-	const initialRepos = await serverQueries.listRepos.queryPromise({});
 
 	if (!owner || !name) {
-		return <SidebarRepoList initialRepos={initialRepos} />;
+		return <FallbackRepoList />;
 	}
 
 	return (
 		<RepoListShell paramsPromise={paramsPromise} activeTab="actions">
-			<WorkflowRunListContent
-				owner={owner}
-				name={name}
-				activeRunNumber={activeRunNumber ?? null}
-			/>
+			<Suspense fallback={<ListSkeleton />}>
+				<WorkflowRunListContent
+					owner={owner}
+					name={name}
+					activeRunNumber={activeRunNumber ?? null}
+				/>
+			</Suspense>
 		</RepoListShell>
 	);
+}
+
+async function FallbackRepoList() {
+	const initialRepos = await serverQueries.listRepos.queryPromise({});
+	return <SidebarRepoList initialRepos={initialRepos} />;
 }
 
 async function WorkflowRunListContent({

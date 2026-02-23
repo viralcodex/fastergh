@@ -1,4 +1,5 @@
 import { Play } from "@packages/ui/components/icons";
+import { cacheLife } from "next/cache";
 import { SyncProgressOverlay } from "../../../../_components/sync-progress-client";
 
 export default function ActionsDetailDefault({
@@ -14,6 +15,9 @@ async function ActionsDetailContent({
 }: {
 	paramsPromise: Promise<{ owner: string; name: string }>;
 }) {
+	"use cache";
+	cacheLife("max");
+
 	const { owner, name } = await paramsPromise;
 
 	return (

@@ -1,4 +1,5 @@
 import { GitPullRequest } from "@packages/ui/components/icons";
+import { cacheLife } from "next/cache";
 import { SyncProgressOverlay } from "../../../../_components/sync-progress-client";
 
 export default function PullsDetailDefault({
@@ -14,6 +15,9 @@ async function PullsDetailContent({
 }: {
 	paramsPromise: Promise<{ owner: string; name: string }>;
 }) {
+	"use cache";
+	cacheLife("max");
+
 	const { owner, name } = await paramsPromise;
 
 	return (

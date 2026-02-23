@@ -6,6 +6,7 @@ import {
 } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
 import { cn } from "@packages/ui/lib/utils";
+import { cacheLife } from "next/cache";
 import type { ReactNode } from "react";
 
 type RepoTab = "pulls" | "issues" | "actions" | "code";
@@ -13,6 +14,9 @@ type RepoTab = "pulls" | "issues" | "actions" | "code";
 /**
  * Tab bar + body content for repo detail sidebar pages.
  * Rendered inside the universal SidebarClient shell.
+ *
+ * Cached because it only depends on URL params (owner/name) and the active
+ * tab — no request-specific data. The `children` slot passes through opaque.
  */
 export async function RepoListShell({
 	paramsPromise,
@@ -23,6 +27,9 @@ export async function RepoListShell({
 	activeTab: RepoTab;
 	children: ReactNode;
 }) {
+	"use cache";
+	cacheLife("max");
+
 	const { owner, name } = await paramsPromise;
 
 	return (
