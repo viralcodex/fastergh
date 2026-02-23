@@ -638,8 +638,6 @@ const DashboardPrItem = Schema.Struct({
 	authorLogin: Schema.NullOr(Schema.String),
 	authorAvatarUrl: Schema.NullOr(Schema.String),
 	commentCount: Schema.Number,
-	lastCheckConclusion: Schema.NullOr(Schema.String),
-	failingCheckNames: Schema.Array(Schema.String),
 	githubUpdatedAt: Schema.Number,
 });
 
@@ -656,137 +654,25 @@ const DashboardIssueItem = Schema.Struct({
 	githubUpdatedAt: Schema.Number,
 });
 
-const RecentActivityItem = Schema.Struct({
-	ownerLogin: Schema.String,
-	repoName: Schema.String,
-	activityType: Schema.String,
-	title: Schema.String,
-	description: Schema.NullOr(Schema.String),
-	actorLogin: Schema.NullOr(Schema.String),
-	actorAvatarUrl: Schema.NullOr(Schema.String),
-	entityNumber: Schema.NullOr(Schema.Number),
-	createdAt: Schema.Number,
-});
-
 const RepoQuickAccess = Schema.Struct({
 	ownerLogin: Schema.String,
 	name: Schema.String,
 	fullName: Schema.String,
-	openPrCount: Schema.Number,
-	openIssueCount: Schema.Number,
-	failingCheckCount: Schema.Number,
 	lastPushAt: Schema.NullOr(Schema.Number),
 });
 
-const DashboardScopeSchema = Schema.Literal("org", "personal");
-
-const DashboardPortfolioPrItem = Schema.Struct({
-	ownerLogin: Schema.String,
-	repoName: Schema.String,
-	number: Schema.Number,
-	state: Schema.Literal("open", "closed"),
-	draft: Schema.Boolean,
-	title: Schema.String,
-	authorLogin: Schema.NullOr(Schema.String),
-	authorAvatarUrl: Schema.NullOr(Schema.String),
-	commentCount: Schema.Number,
-	lastCheckConclusion: Schema.NullOr(Schema.String),
-	failingCheckNames: Schema.Array(Schema.String),
-	githubUpdatedAt: Schema.Number,
-	assigneeCount: Schema.Number,
-	requestedReviewerCount: Schema.Number,
-	attentionLevel: Schema.Literal("critical", "high", "normal"),
-	attentionReason: Schema.String,
-	isViewerAuthor: Schema.Boolean,
-	isViewerReviewer: Schema.Boolean,
-	isViewerAssignee: Schema.Boolean,
-	isStale: Schema.Boolean,
-});
-
-const DashboardThroughputPoint = Schema.Struct({
-	dayStart: Schema.Number,
-	dayLabel: Schema.String,
-	closedPrCount: Schema.Number,
-	closedIssueCount: Schema.Number,
-	pushCount: Schema.Number,
-});
-
-const DashboardWorkloadItem = Schema.Struct({
-	ownerLogin: Schema.String,
-	openPrCount: Schema.Number,
-	reviewRequestedCount: Schema.Number,
-	failingPrCount: Schema.Number,
-	stalePrCount: Schema.Number,
-});
-
-const DashboardBlockedItem = Schema.Struct({
-	type: Schema.Literal("ci_failure", "stale_pr", "review_queue"),
-	ownerLogin: Schema.String,
-	repoName: Schema.String,
-	number: Schema.Number,
-	title: Schema.String,
-	reason: Schema.String,
-	githubUpdatedAt: Schema.Number,
-});
-
-const DashboardRepoOption = Schema.Struct({
-	ownerLogin: Schema.String,
-	name: Schema.String,
-	fullName: Schema.String,
-});
-
-const DashboardOwnerOption = Schema.Struct({
-	ownerLogin: Schema.String,
-	repoCount: Schema.Number,
-});
-
-const DashboardSummary = Schema.Struct({
-	repoCount: Schema.Number,
-	openPrCount: Schema.Number,
-	openIssueCount: Schema.Number,
-	failingCheckCount: Schema.Number,
-	attentionCount: Schema.Number,
-	reviewQueueCount: Schema.Number,
-	stalePrCount: Schema.Number,
-});
-
 /**
- * Get a personalized cross-repo home dashboard.
- *
- * Resolves the signed-in user's GitHub account and returns:
- * - `yourPrs`             — open PRs authored by the user across all repos
- * - `needsAttentionPrs`   — open PRs where user is assignee or requested reviewer
- * - `recentPrs`           — the most recently updated PRs across all repos
- * - `recentActivity`      — recent activity feed across all repos
- * - `repos`               — quick-access repo summaries sorted by recent push
- * - `githubLogin`         — the user's GitHub username (for display)
+ * Get the home dashboard: 10 most recent PRs, 10 most recent issues, and a
+ * list of accessible repos.
  */
 const getHomeDashboardDef = factory.query({
 	payload: {
-		scope: Schema.optional(DashboardScopeSchema),
 		ownerLogin: Schema.optional(Schema.String),
-		repoFullName: Schema.optional(Schema.String),
-		days: Schema.optional(Schema.Number),
 	},
 	success: Schema.Struct({
-		scope: DashboardScopeSchema,
-		rangeDays: Schema.Number,
-		ownerFilter: Schema.NullOr(Schema.String),
-		repoFilter: Schema.NullOr(Schema.String),
 		githubLogin: Schema.NullOr(Schema.String),
-		yourOwners: Schema.Array(DashboardOwnerOption),
-		availableOwners: Schema.Array(DashboardOwnerOption),
-		availableRepos: Schema.Array(DashboardRepoOption),
-		summary: DashboardSummary,
-		yourPrs: Schema.Array(DashboardPrItem),
-		needsAttentionPrs: Schema.Array(DashboardPrItem),
 		recentPrs: Schema.Array(DashboardPrItem),
 		recentIssues: Schema.Array(DashboardIssueItem),
-		portfolioPrs: Schema.Array(DashboardPortfolioPrItem),
-		recentActivity: Schema.Array(RecentActivityItem),
-		throughput: Schema.Array(DashboardThroughputPoint),
-		workloadByOwner: Schema.Array(DashboardWorkloadItem),
-		blockedItems: Schema.Array(DashboardBlockedItem),
 		repos: Schema.Array(RepoQuickAccess),
 	}),
 });

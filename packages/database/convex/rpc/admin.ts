@@ -1,13 +1,19 @@
 import { createRpcFactory, makeRpcModule } from "@packages/confect/rpc";
-import { Effect, Option, Schema } from "effect";
+import { Array as Arr, Effect, Option, Schema } from "effect";
 import { internal } from "../_generated/api";
-import { ConfectMutationCtx, ConfectQueryCtx, confectSchema } from "../confect";
+import {
+	ConfectActionCtx,
+	ConfectMutationCtx,
+	ConfectQueryCtx,
+	confectSchema,
+} from "../confect";
 import {
 	checkRunsByRepo,
 	issuesByRepo,
 	prsByRepo,
 	webhooksByState,
 } from "../shared/aggregates";
+import { getInstallationToken } from "../shared/githubApp";
 import { DatabaseRpcModuleMiddlewares } from "./moduleMiddlewares";
 import { AdminTokenMiddleware } from "./security";
 
@@ -623,6 +629,368 @@ restartStuckBootstrapsDef.implement((args) =>
 );
 
 // ---------------------------------------------------------------------------
+// Resync installation repos — fetches repos from GitHub API and upserts them
+// ---------------------------------------------------------------------------
+
+interface GitHubInstallationRepo {
+	id: number;
+	full_name: string;
+	private: boolean;
+	default_branch: string;
+	stargazers_count: number;
+	owner: { id: number; login: string };
+}
+
+interface GitHubInstallationReposPage {
+	total_count: number;
+	repositories: Array<GitHubInstallationRepo>;
+}
+
+/**
+ * Fetch all repos for an installation from the GitHub API, handling pagination.
+ */
+const fetchAllInstallationRepos = (token: string) =>
+	Effect.gen(function* () {
+		const allRepos: Array<GitHubInstallationRepo> = [];
+		let page = 1;
+		const perPage = 100;
+
+		// eslint-disable-next-line no-constant-condition
+		while (true) {
+			const response = yield* Effect.tryPromise({
+				try: () =>
+					fetch(
+						`https://api.github.com/installation/repositories?per_page=${perPage}&page=${page}`,
+						{
+							headers: {
+								Authorization: `Bearer ${token}`,
+								Accept: "application/vnd.github+json",
+								"X-GitHub-Api-Version": "2022-11-28",
+							},
+						},
+					),
+				catch: (cause) => new Error(`GitHub API request failed: ${cause}`),
+			});
+
+			if (!response.ok) {
+				const body = yield* Effect.tryPromise({
+					try: () => response.text(),
+					catch: () => new Error(`Failed to read response body`),
+				});
+				return yield* Effect.fail(
+					new Error(
+						`GitHub API returned ${response.status}: ${body.slice(0, 500)}`,
+					),
+				);
+			}
+
+			const data: GitHubInstallationReposPage = yield* Effect.tryPromise({
+				try: () => response.json(),
+				catch: () => new Error("Failed to parse GitHub API response"),
+			});
+
+			for (const repo of data.repositories) {
+				allRepos.push(repo);
+			}
+
+			if (
+				allRepos.length >= data.total_count ||
+				data.repositories.length < perPage
+			) {
+				break;
+			}
+			page++;
+		}
+
+		return allRepos;
+	});
+
+const ResyncRepoItemSchema = Schema.Struct({
+	githubRepoId: Schema.Number,
+	fullName: Schema.String,
+	name: Schema.String,
+	isPrivate: Schema.Boolean,
+	defaultBranch: Schema.String,
+	stargazersCount: Schema.Number,
+	ownerId: Schema.Number,
+	ownerLogin: Schema.String,
+});
+
+/**
+ * Internal mutation: upsert a batch of repos for an installation and start bootstraps.
+ */
+const upsertInstallationReposDef = factory.internalMutation({
+	payload: {
+		installationId: Schema.Number,
+		repos: Schema.Array(ResyncRepoItemSchema),
+	},
+	success: Schema.Struct({
+		newRepoCount: Schema.Number,
+		updatedRepoCount: Schema.Number,
+	}),
+});
+
+upsertInstallationReposDef.implement((args) =>
+	Effect.gen(function* () {
+		const ctx = yield* ConfectMutationCtx;
+		const now = Date.now();
+		let newRepoCount = 0;
+		let updatedRepoCount = 0;
+
+		for (const repo of args.repos) {
+			const existingRepo = yield* ctx.db
+				.query("github_repositories")
+				.withIndex("by_githubRepoId", (q) =>
+					q.eq("githubRepoId", repo.githubRepoId),
+				)
+				.first();
+
+			if (Option.isNone(existingRepo)) {
+				newRepoCount++;
+				yield* ctx.db.insert("github_repositories", {
+					githubRepoId: repo.githubRepoId,
+					installationId: args.installationId,
+					ownerId: repo.ownerId,
+					ownerLogin: repo.ownerLogin,
+					name: repo.name,
+					fullName: repo.fullName,
+					private: repo.isPrivate,
+					visibility: repo.isPrivate ? "private" : "public",
+					defaultBranch: repo.defaultBranch,
+					archived: false,
+					disabled: false,
+					fork: false,
+					pushedAt: null,
+					githubUpdatedAt: now,
+					cachedAt: now,
+					connectedByUserId: null,
+					stargazersCount: repo.stargazersCount,
+				});
+
+				// Create sync job + start bootstrap
+				const lockKey = `repo-bootstrap:${args.installationId}:${repo.githubRepoId}`;
+				const existingJob = yield* ctx.db
+					.query("github_sync_jobs")
+					.withIndex("by_lockKey", (q) => q.eq("lockKey", lockKey))
+					.first();
+
+				if (Option.isNone(existingJob)) {
+					yield* ctx.db.insert("github_sync_jobs", {
+						jobType: "backfill",
+						scopeType: "repository",
+						triggerReason: "install",
+						lockKey,
+						installationId: args.installationId,
+						repositoryId: repo.githubRepoId,
+						entityType: null,
+						state: "pending",
+						attemptCount: 0,
+						nextRunAt: now,
+						lastError: null,
+						currentStep: null,
+						completedSteps: [],
+						itemsFetched: 0,
+						createdAt: now,
+						updatedAt: now,
+					});
+
+					yield* ctx.runMutation(
+						internal.rpc.bootstrapWorkflow.startBootstrap,
+						{
+							repositoryId: repo.githubRepoId,
+							fullName: repo.fullName,
+							lockKey,
+							connectedByUserId: null,
+							installationId: args.installationId,
+						},
+					);
+				}
+			} else {
+				updatedRepoCount++;
+				yield* ctx.db.patch(existingRepo.value._id, {
+					installationId: args.installationId,
+					cachedAt: now,
+					stargazersCount: repo.stargazersCount,
+				});
+			}
+		}
+
+		return { newRepoCount, updatedRepoCount };
+	}),
+);
+
+/**
+ * Internal action: resync repos for one or all installations from the GitHub API.
+ * Fetches the current repo list for each installation and upserts them.
+ */
+const resyncInstallationReposDef = factory.internalAction({
+	payload: {
+		/** If provided, only resync this installation. Otherwise, resync all. */
+		installationId: Schema.optional(Schema.Number),
+	},
+	success: Schema.Array(
+		Schema.Struct({
+			installationId: Schema.Number,
+			accountLogin: Schema.String,
+			totalRepos: Schema.Number,
+			newRepos: Schema.Number,
+			updatedRepos: Schema.Number,
+			error: Schema.NullOr(Schema.String),
+		}),
+	),
+});
+
+const InstallationListSchema = Schema.Array(
+	Schema.Struct({
+		installationId: Schema.Number,
+		accountLogin: Schema.String,
+	}),
+);
+
+const UpsertResultSchema = Schema.Struct({
+	newRepoCount: Schema.Number,
+	updatedRepoCount: Schema.Number,
+});
+
+resyncInstallationReposDef.implement((args) =>
+	Effect.gen(function* () {
+		const ctx = yield* ConfectActionCtx;
+
+		// Get list of installations to process
+		const queryArgs =
+			args.installationId !== undefined
+				? { installationId: args.installationId }
+				: {};
+		const raw = yield* ctx.runQuery(
+			internal.rpc.admin.listInstallationsForResync,
+			queryArgs,
+		);
+		const installations = Schema.decodeUnknownSync(InstallationListSchema)(raw);
+
+		const results: Array<{
+			installationId: number;
+			accountLogin: string;
+			totalRepos: number;
+			newRepos: number;
+			updatedRepos: number;
+			error: string | null;
+		}> = [];
+
+		for (const inst of installations) {
+			const result = yield* Effect.gen(function* () {
+				const token = yield* getInstallationToken(inst.installationId);
+				const repos = yield* fetchAllInstallationRepos(token);
+
+				console.info(
+					`[admin] resyncInstallationRepos: ${inst.accountLogin} (${inst.installationId}) — ${repos.length} repos from GitHub`,
+				);
+
+				// Schedule each batch as an independent mutation via the scheduler
+				// to avoid confect action ctx.runMutation commit issues.
+				const CHUNK_SIZE = 10;
+				let scheduledBatches = 0;
+
+				const chunks = Arr.chunksOf(repos, CHUNK_SIZE);
+				for (const chunk of chunks) {
+					const mapped = Arr.map(chunk, (r) => ({
+						githubRepoId: r.id,
+						fullName: r.full_name,
+						name: r.full_name.split("/")[1] ?? r.full_name,
+						isPrivate: r.private,
+						defaultBranch: r.default_branch,
+						stargazersCount: r.stargazers_count,
+						ownerId: r.owner.id,
+						ownerLogin: r.owner.login,
+					}));
+
+					yield* Effect.promise(() =>
+						ctx.scheduler.runAfter(
+							0,
+							internal.rpc.admin.upsertInstallationRepos,
+							{
+								installationId: inst.installationId,
+								repos: mapped,
+							},
+						),
+					);
+					scheduledBatches++;
+				}
+
+				return {
+					installationId: inst.installationId,
+					accountLogin: inst.accountLogin,
+					totalRepos: repos.length,
+					newRepos: 0,
+					updatedRepos: 0,
+					error: null,
+				};
+			}).pipe(
+				Effect.catchAll((error) =>
+					Effect.succeed({
+						installationId: inst.installationId,
+						accountLogin: inst.accountLogin,
+						totalRepos: 0,
+						newRepos: 0,
+						updatedRepos: 0,
+						error: String(error),
+					}),
+				),
+			);
+
+			results.push(result);
+		}
+
+		return results;
+	}),
+);
+
+/**
+ * Internal query: list installations for resync.
+ */
+const listInstallationsForResyncDef = factory.internalQuery({
+	payload: {
+		installationId: Schema.optional(Schema.Number),
+	},
+	success: Schema.Array(
+		Schema.Struct({
+			installationId: Schema.Number,
+			accountLogin: Schema.String,
+		}),
+	),
+});
+
+listInstallationsForResyncDef.implement((args) =>
+	Effect.gen(function* () {
+		const ctx = yield* ConfectQueryCtx;
+
+		const targetInstallationId = args.installationId;
+		if (targetInstallationId !== undefined) {
+			const inst = yield* ctx.db
+				.query("github_installations")
+				.withIndex("by_installationId", (q) =>
+					q.eq("installationId", targetInstallationId),
+				)
+				.first();
+
+			if (Option.isNone(inst)) return [];
+			return [
+				{
+					installationId: inst.value.installationId,
+					accountLogin: inst.value.accountLogin,
+				},
+			];
+		}
+
+		// All installations with a real installationId (not placeholder 0)
+		const all = yield* ctx.db.query("github_installations").collect();
+		return Arr.filter(all, (i) => i.installationId > 0).map((i) => ({
+			installationId: i.installationId,
+			accountLogin: i.accountLogin,
+		}));
+	}),
+);
+
+// ---------------------------------------------------------------------------
 // Module
 // ---------------------------------------------------------------------------
 
@@ -638,6 +1006,9 @@ const adminModule = makeRpcModule(
 		listStuckBootstraps: listStuckBootstrapsDef,
 		restartStuckBootstraps: restartStuckBootstrapsDef,
 		listDeadLetters: listDeadLettersDef,
+		resyncInstallationRepos: resyncInstallationReposDef,
+		upsertInstallationRepos: upsertInstallationReposDef,
+		listInstallationsForResync: listInstallationsForResyncDef,
 	},
 	{ middlewares: DatabaseRpcModuleMiddlewares },
 );
@@ -653,6 +1024,9 @@ export const {
 	listStuckBootstraps,
 	restartStuckBootstraps,
 	listDeadLetters,
+	resyncInstallationRepos,
+	upsertInstallationRepos,
+	listInstallationsForResync,
 } = adminModule.handlers;
 export { adminModule };
 export type AdminModule = typeof adminModule;

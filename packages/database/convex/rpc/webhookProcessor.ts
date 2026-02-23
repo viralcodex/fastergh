@@ -1958,6 +1958,15 @@ processAllPendingDef.implement(() =>
 					yield* syncWebhookReplace(ctx.rawCtx, event, updatedEvent.value);
 				}
 				processed++;
+
+				// Installation events are heavy (repo inserts + bootstrap scheduling).
+				// Process at most one per batch run to stay within the mutation CPU budget.
+				if (
+					event.eventName === "installation" ||
+					event.eventName === "installation_repositories"
+				) {
+					return { processed, retried, deadLettered };
+				}
 				continue;
 			}
 
