@@ -1,6 +1,6 @@
-# QuickHub Hosting Setup Guide
+# FasterGH Hosting Setup Guide
 
-This guide covers a production setup for QuickHub with:
+This guide covers a production setup for FasterGH with:
 
 - Convex for backend + webhooks
 - Vercel (or any Node host) for `apps/main-site`
@@ -12,7 +12,7 @@ This guide covers a production setup for QuickHub with:
 - Bun 1.3+
 - Convex account + project
 - GitHub org/user where you can create apps
-- A deployed site URL (for example `https://quickhub.yourdomain.com`)
+- A deployed site URL (for example `https://fastergh.yourdomain.com`)
 
 ## 2) Create and configure environment variables
 
@@ -62,7 +62,7 @@ Notes:
 
 ## 3) Create the GitHub OAuth App (sign in with GitHub)
 
-QuickHub uses Better Auth social login with GitHub OAuth credentials.
+FasterGH uses Better Auth social login with GitHub OAuth credentials.
 
 1. Create a GitHub OAuth App.
 2. Set homepage URL to `SITE_URL`.
@@ -80,7 +80,7 @@ QuickHub uses Better Auth social login with GitHub OAuth credentials.
    - Setup URL: `${SITE_URL}/github/setup`
    - Webhook URL: `${CONVEX_SITE_URL}/api/github/webhook`
    - Webhook secret: `GITHUB_WEBHOOK_SECRET`
-3. Grant repository permissions needed for QuickHub sync/write behavior (issues, pull requests, checks, contents/metadata, actions as needed by your workflow).
+3. Grant repository permissions needed for FasterGH sync/write behavior (issues, pull requests, checks, contents/metadata, actions as needed by your workflow).
 4. Subscribe to events:
    - `installation`
    - `installation_repositories`
@@ -185,8 +185,8 @@ What good looks like:
 ### Data sync and writes
 
 - Repositories appear in sidebar after install/onboarding.
-- New PRs/issues/comments in GitHub appear in QuickHub shortly.
-- QuickHub write actions (create issue/comment/merge) succeed and mirror back.
+- New PRs/issues/comments in GitHub appear in FasterGH shortly.
+- FasterGH write actions (create issue/comment/merge) succeed and mirror back.
 
 ## 8) Common misconfigurations
 

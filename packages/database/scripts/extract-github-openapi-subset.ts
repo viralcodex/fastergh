@@ -80,7 +80,7 @@ function resolveRef(ref: string): unknown {
 const subset: Record<string, unknown> = {
 	openapi: fullSpec.openapi,
 	info: {
-		title: "GitHub REST API (QuickHub subset)",
+		title: "GitHub REST API (FasterGH subset)",
 		version: fullSpec.info?.version ?? "1.0.0",
 	},
 	servers: fullSpec.servers,

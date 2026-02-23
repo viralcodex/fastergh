@@ -1,7 +1,7 @@
 {
 	"openapi": "3.0.3",
 	"info": {
-		"title": "GitHub REST API (QuickHub subset)",
+		"title": "GitHub REST API (FasterGH subset)",
 		"version": "1.1.4"
 	},
 	"servers": [

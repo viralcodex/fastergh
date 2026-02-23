@@ -153,11 +153,11 @@ type ReadGitHubRepoPermissionValue = {
 };
 
 export class RepoPermissionContext extends Context.Tag(
-	"@quickhub/RepoPermissionContext",
+	"@fastergh/RepoPermissionContext",
 )<RepoPermissionContext, RepoPermissionContextValue>() {}
 
 export class ReadGitHubRepoPermission extends Context.Tag(
-	"@quickhub/ReadGitHubRepoPermission",
+	"@fastergh/ReadGitHubRepoPermission",
 )<ReadGitHubRepoPermission, ReadGitHubRepoPermissionValue>() {}
 
 type AuthenticatedUserValue = {
@@ -169,11 +169,11 @@ type VerifiedAdminTokenValue = {
 };
 
 export class AuthenticatedUser extends Context.Tag(
-	"@quickhub/AuthenticatedUser",
+	"@fastergh/AuthenticatedUser",
 )<AuthenticatedUser, AuthenticatedUserValue>() {}
 
 export class VerifiedAdminToken extends Context.Tag(
-	"@quickhub/VerifiedAdminToken",
+	"@fastergh/VerifiedAdminToken",
 )<VerifiedAdminToken, VerifiedAdminTokenValue>() {}
 
 export class AdminAccessViolation extends Schema.TaggedError<AdminAccessViolation>()(

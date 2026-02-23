@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Verify GitHub App configuration for QuickHub.
+ * Verify GitHub App configuration for FasterGH.
  *
  * Checks:
  * 1. Required Convex environment variables are set
@@ -157,7 +157,7 @@ const checkGitHubAppInstallations = async (slug: string) => {
 // Main
 // ---------------------------------------------------------------------------
 
-console.log("\x1b[1m🔍 QuickHub GitHub App Configuration Check\x1b[0m");
+console.log("\x1b[1m🔍 FasterGH GitHub App Configuration Check\x1b[0m");
 
 // --- Local .env ---
 

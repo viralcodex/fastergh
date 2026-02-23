@@ -1,4 +1,4 @@
-# QuickHub
+# FasterGH
 
 A fast GitHub mirror UI backed by Convex as a real-time cache/sync layer. GitHub is the source of truth; Convex is the low-latency read model.
 

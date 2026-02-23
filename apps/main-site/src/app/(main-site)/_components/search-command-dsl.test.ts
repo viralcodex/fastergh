@@ -65,15 +65,15 @@ describe("parseSearchCommandQuery", () => {
 			now,
 		);
 		const canonical = buildCanonicalGitHubSearch(parsed, {
-			owner: "quickhub",
-			name: "quickhub",
+			owner: "fastergh",
+			name: "fastergh",
 		});
 
 		expect(canonical).toContain("is:issue");
 		expect(canonical).toContain("author:elliot");
 		expect(canonical).toContain('label:"good first issue"');
 		expect(canonical).toContain("updated:>=2026-01-22");
-		expect(canonical).toContain("repo:quickhub/quickhub");
+		expect(canonical).toContain("repo:fastergh/fastergh");
 	});
 
 	it("deduplicates repeated label filters", () => {

@@ -26,7 +26,7 @@ import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { triggerOpenSearchCommand } from "../_components/search-command-events";
+import { triggerOpenSearchCommand } from "./search-command-events";
 
 // ---------------------------------------------------------------------------
 // Types

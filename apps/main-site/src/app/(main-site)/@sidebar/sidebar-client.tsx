@@ -32,7 +32,7 @@ export type SidebarRepo = {
 //   │  children (body)     │  ← swapped per route
 //   ├─────────────────────┤
 //   │  Install GitHub App  │
-//   │  QuickHub GitHub     │
+//   │  FasterGH GitHub     │
 //   │  UserButton / CTA    │
 //   └─────────────────────┘
 // ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ export function SidebarClient({
 					<Search className="size-3.5 shrink-0 text-muted-foreground" />
 					<div className="min-w-0 flex-1">
 						<div className="truncate text-[12px] font-medium text-foreground">
-							Search QuickHub
+							Search FasterGH
 						</div>
 					</div>
 				</Button>
@@ -81,7 +81,7 @@ export function SidebarClient({
 					className="h-6 text-[10px] w-full text-muted-foreground/50 hover:text-muted-foreground"
 				>
 					<a
-						href="https://github.com/RhysSullivan/quickhub"
+						href="https://github.com/RhysSullivan/fastergh"
 						target="_blank"
 						rel="noopener noreferrer"
 					>

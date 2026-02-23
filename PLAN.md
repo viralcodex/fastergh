@@ -53,7 +53,7 @@ This means the old "build MVP mirror" mission is done. The next phase is product
 ## Active Scope (Phase 2)
 
 <!-- ACTIVE_SCOPE_START -->
-You are continuing QuickHub after MVP completion. Do not restart old slices.
+You are continuing FasterGH after MVP completion. Do not restart old slices.
 
 Current product posture:
 - Core mirror pipeline works end-to-end.
@@ -61,10 +61,10 @@ Current product posture:
 - Tests cover core webhook/projection/idempotency flows.
 
 New mission:
-Evolve QuickHub from "works for one test repo" into a production-ready, multi-repo, operable service.
+Evolve FasterGH from "works for one test repo" into a production-ready, multi-repo, operable service.
 
 Day-to-day usability target for this loop:
-- QuickHub should be usable as the primary daily GitHub interface for personal workflow, without GitHub App auth flows.
+- FasterGH should be usable as the primary daily GitHub interface for personal workflow, without GitHub App auth flows.
 - Authentication model remains unchanged for now: no in-app auth, no GitHub App install; use existing PAT/`gh` credentials in backend environment.
 - "Usable" means read + core write workflows are available and reliable for normal PR/issue-driven development.
 
@@ -269,7 +269,7 @@ Not needed initially:
 
 ## Test Repository
 
-Create a public repo `RhysSullivan/quickhub-test` via `gh repo create` during Slice 0. This repo is used for:
+Create a public repo `RhysSullivan/fastergh-test` via `gh repo create` during Slice 0. This repo is used for:
 
 - End-to-end webhook delivery testing (real webhooks from GitHub → Convex HTTP endpoint)
 - Backfill / bootstrap testing against real GitHub API data
@@ -733,7 +733,7 @@ Implement in this sequence:
    - Remove discord-bot references from active codepaths
    - Init git repo, make initial commit of clean state
    - Generate `GITHUB_WEBHOOK_SECRET` and add to `.env` and `.env.example`
-   - Create public test repo `RhysSullivan/quickhub-test` via `gh repo create`
+   - Create public test repo `RhysSullivan/fastergh-test` via `gh repo create`
    - Verify `bun install` and `bun typecheck` pass on clean state
 1. Control + ingestion schema (all tables via Confect `defineTable`).
 2. Webhook HTTP endpoint and HMAC-SHA256 signature verification.
@@ -798,11 +798,11 @@ Completed:
   - Stripped betterAuth from convex.config.ts and http.ts
   - Added 18-table GitHub mirror schema in schema.ts
   - Rewrote admin.ts with healthCheck query
-  - Updated main-site with QuickHub placeholder
+  - Updated main-site with FasterGH placeholder
   - Cleaned tsconfig.json, knip.json, biome.json of stale references
   - bun typecheck passes (5/5 packages)
   - GITHUB_WEBHOOK_SECRET generated and in .env
-  - Test repo RhysSullivan/quickhub-test exists on GitHub
+  - Test repo RhysSullivan/fastergh-test exists on GitHub
 In Progress:
   - Slice 1 schema validation (need to run Convex codegen to confirm schema compiles)
 Next Step:
@@ -839,7 +839,7 @@ In Progress:
 Next Step:
   - Build connectRepo admin mutation (creates installation + repo records, enqueues bootstrap job)
   - Build bootstrap backfill action (fetches repo metadata, branches, PRs, issues via gh api)
-  - Test with RhysSullivan/quickhub-test repo
+  - Test with RhysSullivan/fastergh-test repo
 Next Command:
   - Create packages/database/convex/rpc/repoConnect.ts
 Blockers/Risks:
@@ -866,12 +866,12 @@ Completed:
   - Confect tests pass (124/124), full typecheck passes (5/5 packages, 0 errors)
 In Progress:
   - Need to deploy to Convex to regenerate _generated/api.d.ts
-  - Need to test connectRepo + bootstrapRepo end-to-end with RhysSullivan/quickhub-test
+  - Need to test connectRepo + bootstrapRepo end-to-end with RhysSullivan/fastergh-test
 Next Step:
   - Deploy to Convex (bunx convex deploy from packages/database)
-  - Call connectRepo manually with quickhub-test repo metadata
+  - Call connectRepo manually with fastergh-test repo metadata
   - Verify bootstrap action runs and populates domain tables
-  - Create repo-level webhook on quickhub-test via gh api
+  - Create repo-level webhook on fastergh-test via gh api
   - Begin Slice 4: webhook handlers for PR/issue/comment events
 Next Command:
   - bunx convex deploy (from packages/database)
@@ -888,7 +888,7 @@ Branch: main
 Completed:
   - Deployed schema + functions to Convex dev (healthy-albatross-147)
   - Set GITHUB_PAT and GITHUB_WEBHOOK_SECRET as Convex environment variables
-  - Called connectRepo mutation for RhysSullivan/quickhub-test (githubRepoId: 1161113336)
+  - Called connectRepo mutation for RhysSullivan/fastergh-test (githubRepoId: 1161113336)
   - Created test data: README, 4 branches, 5 issues, 2 PRs, 3 comments, merged PR #6
   - Re-ran bootstrapRepo action: successfully fetched 4 branches, 2 PRs, 5 issues, 1 user
   - Created repo-level webhook (id: 596888336) with events: push, pull_request, issues, issue_comment, check_run, pull_request_review, create, delete
@@ -906,7 +906,7 @@ Next Command:
   - Create packages/database/convex/rpc/webhookHandlers.ts (or split per event type)
 Blockers/Risks:
   - Webhook events are stored raw but not processed yet — Slice 4 handles this
-  - quickhub-test webhook id: 596888336
+  - fastergh-test webhook id: 596888336
   - gh OAuth token used as GITHUB_PAT (has repo scope, sufficient for all operations)
 ```
 
@@ -985,7 +985,7 @@ Completed:
       - replayEvent with nonexistent ID: {found: false, previousState: null} ✅
       - retryAllFailed with no failures: {resetCount: 0} ✅
       - moveToDeadLetter with nonexistent ID: {moved: false} ✅
-      - reconcileRepo for quickhub-test: {scheduled: true, lockKey: "repo-reconcile:0:1161113336"} ✅
+      - reconcileRepo for fastergh-test: {scheduled: true, lockKey: "repo-reconcile:0:1161113336"} ✅
     - Reconcile job ran successfully: state "done", picked up new data (commits 2→5, users 1→3)
     - Typecheck: 0 errors across all packages
     - Deployed to Convex dev

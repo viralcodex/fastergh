@@ -1,4 +1,4 @@
-# AGENTS.md - QuickHub Monorepo Guide
+# AGENTS.md - FasterGH Monorepo Guide
 
 This file is for autonomous coding agents working in `/home/rhys/quickhub`.
 It defines build/test/lint commands, style conventions, and repository-specific rules.

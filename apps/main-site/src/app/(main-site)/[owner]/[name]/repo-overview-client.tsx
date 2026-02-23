@@ -11,7 +11,7 @@ import {
 import { Link } from "@packages/ui/components/link";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useMemo } from "react";
-import { InstallGitHubAppButton } from "../../../_components/install-github-app-button";
+import { InstallGitHubAppButton } from "../../_components/install-github-app-button";
 
 // ---------------------------------------------------------------------------
 // Shared helpers

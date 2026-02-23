@@ -247,26 +247,26 @@ interface RepoAccessProof {
 	readonly repositoryId: number;
 }
 
-export class RepoPullAccess extends Context.Tag("@quickhub/RepoPullAccess")<
+export class RepoPullAccess extends Context.Tag("@fastergh/RepoPullAccess")<
 	RepoPullAccess,
 	RepoAccessProof
 >() {}
 
-export class RepoTriageAccess extends Context.Tag("@quickhub/RepoTriageAccess")<
+export class RepoTriageAccess extends Context.Tag("@fastergh/RepoTriageAccess")<
 	RepoTriageAccess,
 	RepoAccessProof
 >() {}
 
-export class RepoPushAccess extends Context.Tag("@quickhub/RepoPushAccess")<
+export class RepoPushAccess extends Context.Tag("@fastergh/RepoPushAccess")<
 	RepoPushAccess,
 	RepoAccessProof
 >() {}
 
 export class RepoMaintainAccess extends Context.Tag(
-	"@quickhub/RepoMaintainAccess",
+	"@fastergh/RepoMaintainAccess",
 )<RepoMaintainAccess, RepoAccessProof>() {}
 
-export class RepoAdminAccess extends Context.Tag("@quickhub/RepoAdminAccess")<
+export class RepoAdminAccess extends Context.Tag("@fastergh/RepoAdminAccess")<
 	RepoAdminAccess,
 	RepoAccessProof
 >() {}

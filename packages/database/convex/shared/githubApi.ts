@@ -380,7 +380,7 @@ const makeClient = (token: string): IGitHubApiClient => {
 	};
 };
 
-export class GitHubApiClient extends Context.Tag("@quickhub/GitHubApiClient")<
+export class GitHubApiClient extends Context.Tag("@fastergh/GitHubApiClient")<
 	GitHubApiClient,
 	IGitHubApiClient
 >() {

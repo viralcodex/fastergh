@@ -1,4 +1,4 @@
-export const OPEN_SEARCH_COMMAND_EVENT = "quickhub:open-search-command";
+export const OPEN_SEARCH_COMMAND_EVENT = "fastergh:open-search-command";
 
 export function triggerOpenSearchCommand() {
 	if (typeof window === "undefined") return;

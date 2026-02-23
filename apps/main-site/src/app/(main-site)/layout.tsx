@@ -20,21 +20,18 @@ function DetailShellFallback() {
 /**
  * Root layout for the main site.
  *
- * Uses Next.js parallel routes: `@sidebar` and `@detail` are rendered as
- * independent slots within `HubShell`. The sidebar persists across navigations
- * — only the detail panel re-renders when clicking between items.
+ * Uses a single `@sidebar` parallel route for the sidebar panel content,
+ * resolved automatically by the Next.js router. The sidebar persists across
+ * navigations — only the detail panel (children / page.tsx) re-renders.
  *
- * `children` is the default slot (maps to `page.tsx` files) and is not rendered
- * since all visual content flows through the parallel route slots.
+ * `children` maps to `page.tsx` files and renders the main detail content.
  */
 export default function MainSiteLayout({
-	children: _children,
+	children,
 	sidebar,
-	detail,
 }: {
 	children: ReactNode;
 	sidebar: ReactNode;
-	detail: ReactNode;
 }) {
 	return (
 		<Providers>
@@ -45,7 +42,7 @@ export default function MainSiteLayout({
 					</Suspense>
 				}
 				detail={
-					<Suspense fallback={<DetailShellFallback />}>{detail}</Suspense>
+					<Suspense fallback={<DetailShellFallback />}>{children}</Suspense>
 				}
 			/>
 		</Providers>

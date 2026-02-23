@@ -1,3 +1,1 @@
-export default function ActivityPage() {
-	return null;
-}
+export { default } from "../page";

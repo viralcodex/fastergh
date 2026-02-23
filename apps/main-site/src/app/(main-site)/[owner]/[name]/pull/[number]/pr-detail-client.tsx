@@ -323,24 +323,24 @@ function MouseDownExpandContainer({
 			);
 			for (const button of buttons) {
 				if (!isExpandedDisabled) {
-					delete button.dataset.quickhubExpandDisabled;
+					delete button.dataset.fasterghExpandDisabled;
 					button.removeAttribute("disabled");
 					button.removeAttribute("aria-disabled");
 					button.style.opacity = "";
 					button.style.cursor = "";
 					button.style.filter = "";
 					button.title = "";
-					if (button.dataset.quickhubOriginalTitle !== undefined) {
-						button.title = button.dataset.quickhubOriginalTitle;
-						delete button.dataset.quickhubOriginalTitle;
+					if (button.dataset.fasterghOriginalTitle !== undefined) {
+						button.title = button.dataset.fasterghOriginalTitle;
+						delete button.dataset.fasterghOriginalTitle;
 					}
 					continue;
 				}
 
 				const tooltip =
 					disabledExpandTooltip ?? "Could not load full context for this file";
-				button.dataset.quickhubExpandDisabled = "true";
-				button.dataset.quickhubOriginalTitle = button.title;
+				button.dataset.fasterghExpandDisabled = "true";
+				button.dataset.fasterghOriginalTitle = button.title;
 				button.setAttribute("disabled", "");
 				button.setAttribute("aria-disabled", "true");
 				button.style.opacity = "0.45";
@@ -371,7 +371,7 @@ function MouseDownExpandContainer({
 			if (event.button !== 0) return;
 			const expandButton = getExpandButton(event);
 			if (expandButton === null) return;
-			if (expandButton.dataset.quickhubExpandDisabled === "true") {
+			if (expandButton.dataset.fasterghExpandDisabled === "true") {
 				event.preventDefault();
 				event.stopPropagation();
 				return;
@@ -450,7 +450,7 @@ export function PrDetailClient({
 	const [reviewDraftReplies, setReviewDraftReplies] = useState<
 		ReadonlyArray<DraftReviewReply>
 	>([]);
-	const reviewDraftStorageKey = `quickhub.review-draft.${owner}.${name}.${String(prNumber)}`;
+	const reviewDraftStorageKey = `fastergh.review-draft.${owner}.${name}.${String(prNumber)}`;
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;
@@ -1234,7 +1234,7 @@ const DiffPanel = forwardRef<
 	const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
 	const filterInputRef = useRef<HTMLInputElement>(null);
 
-	const diffPrefKey = `quickhub.diff.preferences.${owner}.${name}`;
+	const diffPrefKey = `fastergh.diff.preferences.${owner}.${name}`;
 
 	useEffect(() => {
 		if (typeof window === "undefined") return;

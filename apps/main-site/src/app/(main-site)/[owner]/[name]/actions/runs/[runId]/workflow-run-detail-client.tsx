@@ -92,7 +92,7 @@ type Step = {
 
 type CopyMode = "agent" | "cli" | "raw";
 
-const COPY_MODE_KEY = "quickhub:logs-copy-mode";
+const COPY_MODE_KEY = "fastergh:logs-copy-mode";
 
 function getLastCopyMode(): CopyMode {
 	if (typeof window === "undefined") return "raw";

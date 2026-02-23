@@ -28,7 +28,7 @@ class InvalidRepoFormat extends Schema.TaggedError<InvalidRepoFormat>()(
 // ---------------------------------------------------------------------------
 
 /**
- * Connect a GitHub repository to QuickHub.
+ * Connect a GitHub repository to FasterGH.
  *
  * Creates or finds an installation record for the owner account,
  * creates the repository record, creates a bootstrap sync job,
@@ -38,7 +38,7 @@ class InvalidRepoFormat extends Schema.TaggedError<InvalidRepoFormat>()(
  */
 const connectRepoDef = factory.internalMutation({
 	payload: {
-		/** Full repo name, e.g. "RhysSullivan/quickhub-test" */
+		/** Full repo name, e.g. "RhysSullivan/fastergh-test" */
 		fullName: Schema.String,
 		/** GitHub repo ID (from API) */
 		githubRepoId: Schema.Number,
