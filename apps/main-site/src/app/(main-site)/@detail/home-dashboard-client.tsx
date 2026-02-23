@@ -391,11 +391,6 @@ function DashboardCommandPalette({
 										key={repo.fullName}
 										value={repo.fullName}
 										href={`/${repo.ownerLogin}/${repo.name}`}
-										prefetchKey="repo.overview"
-										prefetchParams={{
-											owner: repo.ownerLogin,
-											name: repo.name,
-										}}
 										onBeforeNavigate={clearQuery}
 									>
 										<GitBranch className="size-3.5 text-muted-foreground" />
@@ -417,12 +412,6 @@ function DashboardCommandPalette({
 										key={`${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
 										value={`pr-${pr.ownerLogin}/${pr.repoName}#${pr.number}`}
 										href={`/${pr.ownerLogin}/${pr.repoName}/pull/${pr.number}`}
-										prefetchKey="repo.pull"
-										prefetchParams={{
-											owner: pr.ownerLogin,
-											name: pr.repoName,
-											number: pr.number,
-										}}
 										onBeforeNavigate={clearQuery}
 									>
 										<GitPullRequest className="size-3.5 text-status-open" />
@@ -443,12 +432,6 @@ function DashboardCommandPalette({
 										key={`${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
 										value={`issue-${issue.ownerLogin}/${issue.repoName}#${issue.number}`}
 										href={`/${issue.ownerLogin}/${issue.repoName}/issues/${issue.number}`}
-										prefetchKey="repo.issue"
-										prefetchParams={{
-											owner: issue.ownerLogin,
-											name: issue.repoName,
-											number: issue.number,
-										}}
 										onBeforeNavigate={clearQuery}
 									>
 										<CircleDot className="size-3.5 text-status-open" />
@@ -615,12 +598,6 @@ function PrRow({ pr, isOwned }: { pr: DashboardPrItem; isOwned: boolean }) {
 	return (
 		<Link
 			href={`/${pr.ownerLogin}/${pr.repoName}/pull/${pr.number}`}
-			prefetchKey="repo.pull"
-			prefetchParams={{
-				owner: pr.ownerLogin,
-				name: pr.repoName,
-				number: pr.number,
-			}}
 			className="flex items-center gap-2.5 border-b border-border/30 px-3 py-2 no-underline transition-colors hover:bg-accent/50 last:border-b-0"
 		>
 			<PrStateIcon state={pr.state} draft={pr.draft} />
@@ -699,12 +676,6 @@ function IssueRow({ issue }: { issue: DashboardIssueItem }) {
 	return (
 		<Link
 			href={`/${issue.ownerLogin}/${issue.repoName}/issues/${issue.number}`}
-			prefetchKey="repo.issue"
-			prefetchParams={{
-				owner: issue.ownerLogin,
-				name: issue.repoName,
-				number: issue.number,
-			}}
 			className="flex items-center gap-2.5 border-b border-border/30 px-3 py-2 no-underline transition-colors hover:bg-accent/50 last:border-b-0"
 		>
 			<CircleDot
@@ -762,8 +733,6 @@ function RepoRow({ repo }: { repo: RepoSummary }) {
 	return (
 		<Link
 			href={`/${repo.ownerLogin}/${repo.name}`}
-			prefetchKey="repo.overview"
-			prefetchParams={{ owner: repo.ownerLogin, name: repo.name }}
 			className="flex items-center justify-between gap-2 border-b border-border/30 px-3 py-2 no-underline transition-colors hover:bg-accent/50 last:border-b-0"
 		>
 			<div className="min-w-0 flex-1">

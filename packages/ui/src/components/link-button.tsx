@@ -1,11 +1,10 @@
 "use client";
 
 import type { VariantProps } from "class-variance-authority";
+import { usePathname } from "next/navigation";
 import type * as React from "react";
-import { useCurrentPathname } from "../hooks/use-current-pathname";
 import { Button, type buttonVariants } from "./button";
 import { Link } from "./link";
-import type { NavigationPrefetchParams } from "./navigation-prefetch-provider";
 
 export interface LinkButtonProps
 	extends React.AnchorHTMLAttributes<HTMLAnchorElement>,
@@ -14,8 +13,6 @@ export interface LinkButtonProps
 	children?: React.ReactNode;
 	prefetch?: boolean;
 	selectedVariant?: VariantProps<typeof buttonVariants>["variant"];
-	prefetchKey?: string;
-	prefetchParams?: NavigationPrefetchParams;
 }
 
 export function LinkButton({
@@ -27,7 +24,7 @@ export function LinkButton({
 	selectedVariant,
 	...props
 }: LinkButtonProps) {
-	const pathname = useCurrentPathname();
+	const pathname = usePathname();
 	const isSelected = href === pathname && selectedVariant;
 	const finalVariant = isSelected ? selectedVariant : variant;
 

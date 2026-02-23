@@ -31,8 +31,6 @@ export async function RepoListShell({
 				<div className="flex px-0.5 mt-0.5">
 					<Link
 						href={`/${owner}/${name}/pulls`}
-						prefetchKey="repo.pulls"
-						prefetchParams={{ owner, name }}
 						className={cn(
 							"flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold border-b-2 -mb-px transition-colors no-underline",
 							activeTab === "pulls"
@@ -46,8 +44,6 @@ export async function RepoListShell({
 					</Link>
 					<Link
 						href={`/${owner}/${name}/issues`}
-						prefetchKey="repo.issues"
-						prefetchParams={{ owner, name }}
 						className={cn(
 							"flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold border-b-2 -mb-px transition-colors no-underline",
 							activeTab === "issues"
@@ -61,8 +57,6 @@ export async function RepoListShell({
 					</Link>
 					<Link
 						href={`/${owner}/${name}/actions`}
-						prefetchKey="repo.actions"
-						prefetchParams={{ owner, name }}
 						className={cn(
 							"flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold border-b-2 -mb-px transition-colors no-underline",
 							activeTab === "actions"
@@ -76,8 +70,6 @@ export async function RepoListShell({
 					</Link>
 					<Link
 						href={`/${owner}/${name}/tree/HEAD`}
-						prefetchKey="repo.tree"
-						prefetchParams={{ owner, name, ref: "HEAD" }}
 						className={cn(
 							"flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold border-b-2 -mb-px transition-colors no-underline",
 							activeTab === "code"

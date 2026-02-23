@@ -13,15 +13,7 @@ import { Command as CommandPrimitive } from "cmdk";
 import { useRouter } from "next/navigation";
 import type * as React from "react";
 import { useCallback } from "react";
-import {
-	isQuickHubSpaNavigationEnabled,
-	navigateQuickHubSpa,
-} from "../lib/spa-navigation";
 import { Link } from "./link";
-import {
-	type NavigationPrefetchParams,
-	useNavigationPrefetch,
-} from "./navigation-prefetch-provider";
 
 function Command({
 	className,
@@ -213,49 +205,21 @@ function CommandShortcut({
 function CommandLinkItem({
 	href,
 	onBeforeNavigate,
-	prefetchKey,
-	prefetchParams,
 	className,
 	children,
 	...props
 }: Omit<React.ComponentProps<typeof CommandPrimitive.Item>, "onSelect"> & {
 	href: string;
 	onBeforeNavigate?: () => void;
-	prefetchKey?: string;
-	prefetchParams?: NavigationPrefetchParams;
 }) {
 	const router = useRouter();
-	const prefetchRequest = useNavigationPrefetch();
-	const prefetchIntent =
-		prefetchKey === undefined
-			? undefined
-			: {
-					key: prefetchKey,
-					params: prefetchParams,
-				};
 
 	const handleSelect = useCallback(() => {
 		onBeforeNavigate?.();
-		if (!isQuickHubSpaNavigationEnabled()) {
-			router.prefetch(href);
-		}
-		const prefetchPromise = Promise.resolve(
-			prefetchRequest({ href, intent: prefetchIntent }),
-		).catch(() => undefined);
 		// Keyboard Enter path — the Link overlay handles mouse interactions,
 		// but cmdk's onSelect fires for keyboard. Use router.push here.
-		if (isQuickHubSpaNavigationEnabled()) {
-			const warmupWindow = new Promise<void>((resolve) => {
-				setTimeout(resolve, 220);
-			});
-
-			void Promise.race([prefetchPromise, warmupWindow]).finally(() => {
-				navigateQuickHubSpa(href);
-			});
-			return;
-		}
 		router.push(href);
-	}, [href, onBeforeNavigate, prefetchIntent, prefetchRequest, router]);
+	}, [onBeforeNavigate, router, href]);
 
 	return (
 		<CommandPrimitive.Item
@@ -270,8 +234,6 @@ function CommandLinkItem({
 			{/* Invisible stretched link for prefetch + real anchor semantics */}
 			<Link
 				href={href}
-				prefetchKey={prefetchKey}
-				prefetchParams={prefetchParams}
 				className="absolute inset-0 z-0"
 				tabIndex={-1}
 				aria-hidden

@@ -7,5 +7,4 @@ import { createRpcModuleClientContext } from "./client-context";
 export const {
 	RpcClientProvider: IssueTemplatesProvider,
 	useRpcClient: useIssueTemplates,
-	getDefaultRpcClient: getIssueTemplatesClient,
 } = createRpcModuleClientContext<IssueTemplatesModule>(api.rpc.issueTemplates);

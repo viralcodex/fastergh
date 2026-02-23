@@ -7,7 +7,6 @@ import { createRpcModuleClientContext } from "./client-context";
 export const {
 	RpcClientProvider: ProjectionQueriesProvider,
 	useRpcClient: useProjectionQueries,
-	getDefaultRpcClient: getProjectionQueriesClient,
 } = createRpcModuleClientContext<ProjectionQueriesModule>(
 	api.rpc.projectionQueries,
 );

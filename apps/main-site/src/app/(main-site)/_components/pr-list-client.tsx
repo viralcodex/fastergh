@@ -6,10 +6,10 @@ import { MessageCircle } from "@packages/ui/components/icons";
 import { Link } from "@packages/ui/components/link";
 import { Skeleton } from "@packages/ui/components/skeleton";
 import { useInfinitePaginationWithInitial } from "@packages/ui/hooks/use-paginated-atom";
-import { navigateQuickHubSpa } from "@packages/ui/lib/spa-navigation";
 import { cn } from "@packages/ui/lib/utils";
 import { useProjectionQueries } from "@packages/ui/rpc/projection-queries";
 import { useHotkey } from "@tanstack/react-hotkeys";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /** Scroll the PR list item with the given number into view within its scroll container */
@@ -73,6 +73,7 @@ export function PrListClient({
 
 	const filteredPrs = useMemo(() => prs, [prs]);
 
+	const router = useRouter();
 	const activeNumber = activePullNumber;
 
 	// Find the index of the currently active PR for j/k navigation
@@ -90,23 +91,23 @@ export function PrListClient({
 			const nextIndex = prevCountRef.current; // first item of the new page
 			const pr = filteredPrs[nextIndex];
 			if (pr) {
-				navigateQuickHubSpa(`/${owner}/${name}/pull/${pr.number}`);
+				router.push(`/${owner}/${name}/pull/${pr.number}`);
 				scrollPrIntoView(pr.number);
 			}
 			pendingNavRef.current = null;
 		}
 		prevCountRef.current = filteredPrs.length;
-	}, [filteredPrs.length, filteredPrs, owner, name]);
+	}, [filteredPrs.length, filteredPrs, owner, name, router]);
 
 	const navigateTo = useCallback(
 		(index: number) => {
 			const pr = filteredPrs[index];
 			if (pr) {
-				navigateQuickHubSpa(`/${owner}/${name}/pull/${pr.number}`);
+				router.push(`/${owner}/${name}/pull/${pr.number}`);
 				scrollPrIntoView(pr.number);
 			}
 		},
-		[filteredPrs, owner, name],
+		[filteredPrs, owner, name, router],
 	);
 
 	// j — open next PR (matches GitHub issue/PR list navigation)

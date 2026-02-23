@@ -7,5 +7,4 @@ import { createRpcModuleClientContext } from "./client-context";
 export const {
 	RpcClientProvider: CodeBrowseProvider,
 	useRpcClient: useCodeBrowse,
-	getDefaultRpcClient: getCodeBrowseClient,
 } = createRpcModuleClientContext<CodeBrowseModule>(api.rpc.codeBrowse);
